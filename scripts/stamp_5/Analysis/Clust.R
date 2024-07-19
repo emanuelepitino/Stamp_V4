@@ -29,10 +29,10 @@ sce
 # sce <- sce[,1:1000]
 
 # Build SNN graph
-snn.gr <- buildSNNGraph(sce, BNPARAM=AnnoyParam(), use.dimred="PCA", BPPARAM = bp)
+snn.gr <- buildSNNGraph(sce, type = "jaccard", BNPARAM=AnnoyParam(), use.dimred="PCA", BPPARAM = bp)
 
-# Run Louvain
-clusters <- igraph::cluster_leiden(snn.gr, resolution_parameter = 0.0001)
+# Run Leiden
+clusters <- igraph::cluster_louvain(snn.gr, resolution = 0.5)
 
 # Assign labels
 sce$label <- as.character(clusters$membership)

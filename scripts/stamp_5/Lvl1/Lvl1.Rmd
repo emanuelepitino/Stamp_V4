@@ -61,11 +61,14 @@ Here we want to distinguish main lineages such as T/B lymphocytes and Myeloid ce
 sce$lvl1[sce$label == "1"] <- "T"
 sce$lvl1[sce$label == "2"] <- "LowQ"
 sce$lvl1[sce$label == "3"] <- "T"
-sce$lvl1[sce$label == "4"] <- "T"
-sce$lvl1[sce$label == "5"] <- "B"
-sce$lvl1[sce$label == "6"] <- "B"
-sce$lvl1[sce$label == "7"] <- "T" # i know it's NK, but we want to group with T for the moment
-sce$lvl1[sce$label == "8"] <- "Myeloid"
+sce$lvl1[sce$label == "4"] <- "LowQ"
+sce$lvl1[sce$label == "5"] <- "Myeloid"
+sce$lvl1[sce$label == "6"] <- "T"
+sce$lvl1[sce$label == "7"] <- "LowQ" # i know it's NK, but we want to group with T for the moment
+sce$lvl1[sce$label == "8"] <- "B"
+sce$lvl1[sce$label == "9"] <- "Myeloid"
+sce$lvl1[sce$label == "10"] <- "Myeloid"
+sce$lvl1[sce$label == "11"] <- "T"
 
 ```
 

@@ -31,13 +31,13 @@ source(glue("{dir}/scripts/misc/BIN.R"))
 
 ## Load data
 ```{r}
-sub <- "T"
+sub <- "B"
 res_dir <- paste0(proj_dir, "/data/stamp_5/processed/Lvl2/",sub)
 sce <- qread(glue("{res_dir}/clust_lvl2_sce.qs"))
 ```
 
 ```{r}
-sce$label <- sce$label2
+sce$label <- sce$label4
 ```
 
 ```{r}
@@ -84,7 +84,9 @@ lapply(unique(markers$cluster), function(cl) {
   writeData(wb, sheet = paste0("Cluster_", cl), markers[markers$cluster == cl, ])
 })
 # Save the workbook
-saveWorkbook(wb, glue("{dir}/markers_lvl2.xlsx"), overwrite = TRUE)
+mrkrs_dir <- glue("{markers_dir}/stamp5/Lvl2/{sub}")
+if (!dir.exists(mrkrs_dir)) dir.create(mrkrs_dir, recursive = T)
+saveWorkbook(wb, glue("{mrkrs_dir}/markers_lvl2.xlsx"), overwrite = TRUE)
 ```
 
 ```{r}
@@ -97,8 +99,8 @@ top_markers <- markers %>%
 
 ```{r}
 #feats <- c("CD3E","CD3D","CD4","CD8A","CD8B","FCGR3A","NCAM1","NGK7")
-feats <- c("CD3E","CD3D","CD247","CD4","CCR7","SELL","TCF7","IL7R","GATA3","FOXP3","CTLA4",
-           "IL2RA","CD8A","CD8B","PRF1","GZMB","GZMA","FCGR3A","NCAM1","NGK7","GZMK","PDCD1","TIGIT")
+feats <- c("CD19","CD27","CD37","CD83","FCMR","CD79A","CD79B","MS4A1","SELL","TCL1A","
+           IGHD","IGHM","MKI67","BANK1")
 ```
 
 ```{r}
@@ -111,33 +113,14 @@ create_plots2(sce, "label", intersect(feats, rownames(sce)), pal)
 
 # Annotation
 ```{r}
-sce$lvl2[sce$label == 1] <- "Cytotoxic CD8"
-sce$lvl2[sce$label == 10] <- "Naive CD8"
-sce$lvl2[sce$label == 11] <- "Naive CD4"
-sce$lvl2[sce$label == 12] <- "CD56+ CD16- NK"
-sce$lvl2[sce$label == 13] <- "LowQ"
-sce$lvl2[sce$label == 2] <- "Th2"
-sce$lvl2[sce$label == 3] <- "Memory CD8"
-sce$lvl2[sce$label == 4] <- "CD56dim CD16+ NK"
-sce$lvl2[sce$label == 5] <- "Tregs"
-sce$lvl2[sce$label == 6] <- "CD56dim CD16+ NK"
-sce$lvl2[sce$label == 7] <- "Memory CD4"
-sce$lvl2[sce$label == 8] <- "Naive CD4"
-sce$lvl2[sce$label == 9] <- "LowQ"
+sce$lvl2 <- "B"
+#sce$lvl2[sce$label == 15] <- "Undefined"
+sce$lvl2[sce$label %in% c(13,11)] <- "Undefined"
 ```
 
 ```{r}
-unique(sce$lvl2)
+sce$lvl2 <- factor(sce$lvl2, levels = c("B", "Undefined"))
 ```
-
-
-```{r}
-sce$lvl2 <- factor(sce$lvl2, levels = c("Naive CD4","Memory CD4","Th2","Tregs","Naive CD8",
-                                         "Memory CD8","Cytotoxic CD8",
-                                        "CD56dim CD16+ NK",
-                                         "CD56+ CD16- NK","LowQ"))
-```
-
 
 ```{r}
 pal_lvl2 <- palette_general()
@@ -176,7 +159,7 @@ outdir <- glue("{plt_dir}/stamp_5/Lvl2/{sub}")
 if(!dir.exists(paste0(outdir))){
   dir.create(outdir, recursive = TRUE)
 }
-pdf(paste0(outdir,"/lvl2.pdf"), width = 15, height = 10)
+pdf(paste0(outdir,"/lvl2_6PC.pdf"), width = 15, height = 10)
 create_plots2(sce, "label", intersect(top_markers$gene, rownames(sce)), pal)
 qc_metrics_label
 create_plots2(sce, "label", intersect(feats, rownames(sce)), pal)
