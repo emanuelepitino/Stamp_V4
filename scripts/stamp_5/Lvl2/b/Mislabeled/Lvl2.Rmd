@@ -32,7 +32,7 @@ source(glue("{dir}/scripts/misc/BIN.R"))
 ## Load data
 ```{r}
 lin <- "B"
-sub <- "B"
+sub <- "Mislabeled"
 res_dir <- paste0(proj_dir, "/data/stamp_5/processed/Lvl2/",lin,"/",sub)
 sce <- qread(glue("{res_dir}/clust_lvl2_sce.qs"))
 ```
@@ -112,16 +112,21 @@ create_plots2(sce, "label", intersect(top_markers$gene, rownames(sce)), pal)
 ```
 
 ```{r}
-create_plots2(sce, "label", intersect(feats, rownames(sce)), pal)table(s)
+create_plots2(sce, "label", intersect(feats, rownames(sce)), pal)
 ```
 
 # Annotation
 ```{r}
-sce$lvl2[sce$label == 2] <- "Naive IgK+ B"
-sce$lvl2[sce$label == 1] <- "Naive B"
-sce$lvl2[sce$label == 3] <- "Class Switched B"
-sce$lvl2[sce$label == 4] <- "Class Switched IgK+ B"
+sce$lvl2[sce$label == 1] <- "Class Switched B"
 sce$lvl2[sce$label == 5] <- "Plasmacells"
+sce$lvl2[sce$label == 10] <- "Mislabeled"
+sce$lvl2[sce$label == 2] <- "Naive IgK+ B"
+sce$lvl2[sce$label == 3] <- "Naive B"
+sce$lvl2[sce$label == 4] <- "Naive B"
+sce$lvl2[sce$label == 6] <- "Naive B"
+sce$lvl2[sce$label == 7] <- "LowQ"
+sce$lvl2[sce$label == 8] <- "Mislabeled"
+sce$lvl2[sce$label == 9] <- "Mislabeled"
 ```
 
 ```{r}
@@ -130,8 +135,8 @@ unique(sce$lvl2)
 
 
 ```{r}
-sce$lvl2 <- factor(sce$lvl2, levels = c("Naive B", "Naive IgK+ B", "Class Switched B", "Class Switched IgK+ B", 
-                                        "Plasmacells"))
+sce$lvl2 <- factor(sce$lvl2, levels = c("Naive B", "Naive IgK+ B", "Class Switched B", 
+                                        "Plasmacells", "LowQ", "Mislabeled"))
 ```
 
 ```{r}
@@ -167,7 +172,7 @@ plot_annotation(tag_levels = "A")
 
 # Save plots
 ```{r}
-outdir <- glue("{plt_dir}/stamp_5/Lvl2/{lin}/{sub}")
+outdir <- glue("{plt_dir}/stamp_5/Lvl2/{sub}")
 if(!dir.exists(paste0(outdir))){
   dir.create(outdir, recursive = TRUE)
 }

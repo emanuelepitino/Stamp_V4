@@ -30,15 +30,16 @@ source(glue("{dir}/scripts/misc/BIN.R"))
 ```
 
 ```{r}
-data_dir <- paste0(proj_dir, "/data/stamp_5/processed")
-sce <- qread(glue("{data_dir}/lvl1_sce.qs"))
+lin <- "B"
+data_dir <- paste0(proj_dir, "/data/stamp_5/processed/Lvl2/",lin)
+sce <- qread(glue("{data_dir}/lvl2_sce.qs"))
 ```
 
 
 ## Subset
 ```{r}
-sub <- "B"
-sce <- sce[,sce$lvl1 == sub]
+sub <- "Mislabeled"
+sce <- sce[,sce$lvl2 == sub]
 sce
 ```
 
@@ -128,11 +129,13 @@ wh(12,10)
 library(scales)
 combined <- wrap_plots(gg_hvg, gg_var, gg_pca, gg_um, ncol = 2, nrow = 2) +
   plot_annotation(tag_levels = "A") + 
-  plot_annotation(title = glue("Stamp 5 - {sub}"), subtitle = glue("N = {comma(ncol(sce))} cells"))
+  plot_annotation(title = glue("Stamp 5 - {sub} from {lin}"), subtitle = glue("N = {comma(ncol(sce))} cells"))
 ```
 
 ```{r}
-pdf(glue("{plt_dir}/stamp_5/Lvl2/{sub}/PreProc.pdf"), width = 16, height = 12)
+pdf_dir <- paste0(plt_dir, "/stamp_5/Lvl2/",lin,"/",sub)
+if (!dir.exists(pdf_dir)) dir.create(pdf_dir, recursive = T)
+pdf(glue("{pdf_dir}/PreProc.pdf"), width = 16, height = 12)
 combined
 dev.off()
 ```
@@ -140,7 +143,7 @@ dev.off()
 
 ## Save
 ```{r}
-res_dir <- paste0(proj_dir, "/data/stamp_5/processed/Lvl2/",sub)
+res_dir <- paste0(proj_dir, "/data/stamp_5/processed/Lvl2/",lin,"/",sub)
 if (!dir.exists(res_dir)) dir.create(res_dir, recursive = T)
 
 qsave(sce, glue("{res_dir}/proc_sce.qs"))

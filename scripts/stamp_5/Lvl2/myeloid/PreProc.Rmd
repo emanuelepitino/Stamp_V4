@@ -37,7 +37,7 @@ sce <- qread(glue("{data_dir}/lvl1_sce.qs"))
 
 ## Subset
 ```{r}
-sub <- "B"
+sub <- "Myeloid"
 sce <- sce[,sce$lvl1 == sub]
 sce
 ```
@@ -132,7 +132,9 @@ combined <- wrap_plots(gg_hvg, gg_var, gg_pca, gg_um, ncol = 2, nrow = 2) +
 ```
 
 ```{r}
-pdf(glue("{plt_dir}/stamp_5/Lvl2/{sub}/PreProc.pdf"), width = 16, height = 12)
+pdf_dir <- glue("{plt_dir}/stamp_5/Lvl2/{sub}")
+if (!dir.exists(pdf_dir)) dir.create(pdf_dir, recursive = T)
+pdf(glue("{pdf_dir}/PreProc.pdf"), width = 16, height = 12)
 combined
 dev.off()
 ```

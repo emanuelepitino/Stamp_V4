@@ -48,7 +48,6 @@ plotReducedDim(sce, "UMAP", colour_by = "label2", text_by = "label2", point_size
 plotReducedDim(sce, "UMAP", colour_by = "label3", text_by = "label3", point_size = 1, raster = F, scattermore = T)
 
 # Save
-qsave(sce, glue("{res_dir}/clust_lvl2_sce.qs"))
-
+qsave(sce, glue("{res_dir}/clust_lvl2_sce.qs")
 
 

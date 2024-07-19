@@ -21,8 +21,9 @@ source(glue("{dir}/scripts/misc/paths.R"))
 source(glue("{dir}/scripts/misc/BIN.R"))
 
 # Load data
-sub <- "B"
-res_dir <- paste0(proj_dir, "/data/stamp_5/processed/Lvl2/",sub)
+lin <- "B"
+sub <- "Mislabeled"
+res_dir <- paste0(proj_dir, "/data/stamp_5/processed/Lvl2/",lin,"/",sub)
 sce <- qread(glue("{res_dir}/proc_sce.qs"))
 
 sce
