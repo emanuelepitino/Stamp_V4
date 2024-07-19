@@ -1,0 +1,111 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+```{r}
+# Libraries
+suppressPackageStartupMessages({
+library(SingleCellExperiment)
+library(tidyverse)
+library(dplyr)
+library(here)
+library(scater)
+library(scuttle)
+library(glue)
+library(qs)
+library(parallel)
+library(scran)
+library(BiocParallel)
+library(BiocNeighbors)
+library(BiocSingular)
+library(data.table)
+})
+```
+
+
+```{r}
+dir <- glue("{here()}")
+# Parameters and paths
+source(glue("{dir}/misc/paths.R"))
+source(glue("{dir}/misc/BIN.R"))
+```
+
+
+
+```{r}
+data_dir <- glue("{proj_dir}/data/stamp_5/raw/raw/PBMCs")
+barcodes <- fread(glue("{data_dir}/cell_feature_matrix/barcodes.tsv.gz"), sep = "\t", nThread = 3, header = F)
+features <- fread(glue("{data_dir}/cell_feature_matrix/features.tsv.gz"), sep = "\t", nThread = 3, header = F)
+counts <- Matrix::readMM(glue("{data_dir}/cell_feature_matrix/matrix.mtx.gz"))
+```
+
+
+```{r}
+counts <- as(counts, "dgCMatrix")
+```
+
+```{r}
+colnames(counts) <- barcodes$V1
+rownames(counts) <- features$V2
+```
+
+
+```{r}
+md <- fread(glue("{data_dir}/cells.csv.gz"), sep = ",", nThread = 5, header = T)
+```
+
+
+```{r}
+# isolate negative control matrices:
+NegControlProbe <- counts[grepl("NegControlProbe", rownames(counts)) ,]
+NegControlCodeword <- counts[grepl("NegControlCodeword", rownames(counts)) ,]
+UnassignedCodeword <- counts[grepl("UnassignedCodeword", rownames(counts)) ,]
+```
+
+```{r}
+counts <- counts[ !grepl("NegControlProbe", rownames(counts)) &
+                   !grepl("NegControlCodeword", rownames(counts)) &
+                   !grepl("UnassignedCodeword", rownames(counts)),]
+```
+
+
+```{r}
+sce <- SingleCellExperiment(assays = list(counts = counts), colData = md)
+```
+
+
+```{r}
+metadata(sce)$UnassignedCodeword <- UnassignedCodeword
+metadata(sce)$NegControlCodeword <- NegControlCodeword
+metadata(sce)$NegControlProbe <- NegControlProbe
+```
+
+
+```{r}
+colnames(colData(sce))
+```
+
+```{r}
+proj_dir
+```
+
+
+```{r}
+res_dir <- paste0(proj_dir, "/data/processed")
+if (!dir.exists(res_dir)) {
+    dir.create(res_dir)
+}
+qsave(sce, file = glue("{res_dir}/raw_sce.qs"))
+```
+
+
+```{r}
+res_dir <- paste0(proj_dir, "/data/stamp_5/processed")
+HDF5Array::saveHDF5SummarizedExperiment(sce, dir =  glue("{res_dir}/raw_sce"))
+```
+
+
+```{r}
+sessionInfo()
+```

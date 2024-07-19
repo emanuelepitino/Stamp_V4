@@ -1,0 +1,150 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+suppressPackageStartupMessages({
+library(SingleCellExperiment)
+library(tidyverse)
+library(dplyr)
+library(here)
+library(scater)
+library(scuttle)
+library(glue)
+library(qs)
+library(parallel)
+library(scran)
+library(BiocParallel)
+library(BiocNeighbors)
+library(BiocSingular)
+library(data.table)
+library(scales)
+})
+```
+
+```{r}
+dir <- glue("{here()}")
+source(glue("{dir}/scripts/misc/paths.R"))
+source(glue("{dir}/scripts/misc/BIN.R"))
+```
+
+```{r}
+data_dir <- paste0(proj_dir, "/data/stamp_5/processed/Lvl3/CD4")
+sce <- qread(glue("{data_dir}/lvl3_sce.qs"))
+```
+
+
+## Subset
+```{r}
+sub <- "Undefined"
+sce <- sce[,sce$lvl == sub]
+sce
+```
+
+```{r}
+sce <- logNormCounts(sce, BPPARAM = bp)
+```
+
+
+```{r}
+#sce <- sce[,1:50000]
+```
+
+# Model Gene Variances
+```{r}
+dec.var <- modelGeneVar(sce, BPPARAM = bp)
+hvg <- getTopHVGs(dec.var,fdr.threshold =  0.9)
+length(hvg)
+```
+
+```{r}
+dec.var$hvg <- "no"
+dec.var$hvg[rownames(dec.var) %in% hvg] <- "yes"
+table(dec.var$hvg)
+```
+
+
+```{r}
+rowData <- rowData(sce)
+dec.var$Symbol <- ""
+dec.var$Symbol[rownames(dec.var) %in% rowData$ID] <- rowData$Symbol
+```
+
+
+```{r}
+gg_hvg <- plot_hvg(dec.var, sub)
+gg_hvg
+```
+
+```{r}
+set.seed(101001)
+sce <- fixedPCA(sce, subset.row = hvg,BSPARAM=IrlbaParam())
+```
+
+
+```{r}
+wh(6,5)
+num_pcs_to_retain <- 6
+percent.var <- attr(reducedDim(sce), "percentVar")
+
+data <- data.frame(PC = 1:length(percent.var), Variance = percent.var)
+
+# Plot using ggplot2
+gg_var <- ggplot(data, aes(x = PC, y = Variance)) +
+  geom_point() +
+  scale_y_log10() +
+  xlab("PC") +
+  ylab("Variance explained (%)") +
+  geom_vline(xintercept = num_pcs_to_retain, color = "red") +
+  theme_bw()
+gg_var
+```
+
+
+```{r}
+reducedDim(sce, "PCA") <-  reducedDim(sce, "PCA")[,1:num_pcs_to_retain]
+wh(6,5)
+gg_pca <- plotPCA(sce, scattermore = TRUE) + ggtitle("PCA")
+gg_pca
+```
+
+
+```{r}
+# Run UMAP
+set.seed(123)
+sce <- runUMAP(sce, dimred="PCA", BPPARAM = bp)
+```
+
+
+```{r}
+wh(6,5)
+gg_um <- plotReducedDim(sce, "UMAP", scattermore = TRUE) 
+gg_um
+```
+
+```{r}
+wh(12,10)
+combined <- wrap_plots(gg_hvg, gg_var, gg_pca, gg_um, ncol = 2, nrow = 2) +
+  plot_annotation(tag_levels = "A") + 
+  plot_annotation(title = glue("Stamp 5 - {sub}"), subtitle = glue("N = {comma(ncol(sce))} cells"))
+
+```
+
+```{r}
+plot_dir <- glue("{plt_dir}/stamp_5/Lvl3/{sub}")
+if (!dir.exists(plot_dir)) dir.create(plot_dir, recursive = T)
+pdf(glue("{plot_dir}/PreProc.pdf"), width = 16, height = 12)
+combined
+dev.off()
+```
+
+## Save
+```{r}
+res_dir <- paste0(proj_dir, "/data/stamp_5/processed/Lvl3/",sub)
+if (!dir.exists(res_dir)) dir.create(res_dir, recursive = T)
+
+qsave(sce, glue("{res_dir}/proc_sce.qs"))
+qsave(dec.var, glue("{res_dir}/dec_var.qs"))
+```

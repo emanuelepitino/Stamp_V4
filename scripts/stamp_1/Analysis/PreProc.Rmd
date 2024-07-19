@@ -1,0 +1,109 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+suppressPackageStartupMessages({
+library(SingleCellExperiment)
+library(tidyverse)
+library(dplyr)
+library(here)
+library(scater)
+library(scuttle)
+library(glue)
+library(qs)
+library(parallel)
+library(scran)
+library(BiocParallel)
+library(BiocNeighbors)
+library(BiocSingular)
+library(data.table)
+})
+```
+
+```{r}
+dir <- glue("{here()}")
+source(glue("{dir}/scripts/misc/paths.R"))
+source(glue("{dir}/scripts/misc/BIN.R"))
+```
+
+```{r}
+res_dir <- paste0(proj_dir, "/data/stamp_1/processed")
+sce <- HDF5Array::loadHDF5SummarizedExperiment(glue("{res_dir}/qc_sce"))
+```
+
+```{r}
+sce <- logNormCounts(sce, BPPARAM = bp)
+```
+
+
+```{r}
+#sce <- sce[,1:10000]
+```
+
+# Model Gene Variances
+```{r}
+dec.var <- modelGeneVar(sce, BPPARAM = bp)
+hvg <- getTopHVGs(dec.var,fdr.threshold =  0.9)
+length(hvg)
+```
+
+```{r}
+dec.var$hvg <- "no"
+dec.var$hvg[rownames(dec.var) %in% hvg] <- "yes"
+table(dec.var$hvg)
+```
+
+
+```{r}
+rowData <- rowData(sce)
+dec.var$Symbol <- ""
+dec.var$Symbol[rownames(dec.var) %in% rowData$ID] <- rowData$Symbol
+```
+
+
+```{r}
+plot_hvg(dec.var, "Whole PBMCs")
+```
+
+```{r}
+set.seed(101001)
+sce <- fixedPCA(sce, subset.row = hvg,BSPARAM=IrlbaParam())
+num_pcs_to_retain <- 25
+```
+
+
+```{r}
+wh(6,5)
+num_pcs_to_retain <- 25
+percent.var <- attr(reducedDim(sce), "percentVar")
+plot(percent.var, log="y", xlab="PC", ylab="Variance explained (%)")
+abline(v=num_pcs_to_retain, col="red")
+```
+
+
+```{r}
+reducedDim(sce, "PCA") <-  reducedDim(sce, "PCA")[,1:num_pcs_to_retain]
+wh(6,5)
+plotPCA(sce, scattermore = TRUE) + ggtitle("PCA")
+```
+
+
+```{r}
+# Run UMAP
+set.seed(123)
+sce <- runUMAP(sce, dimred="PCA", BPPARAM = bp)
+```
+
+
+```{r}
+wh(6,5)
+plotReducedDim(sce, "UMAP", scattermore = TRUE) + ggtitle("Stamp 1")
+```
+
+
+```{r}
+HDF5Array::saveHDF5SummarizedExperiment(sce, glue("{res_dir}/proc_sce"), replace = T)
+```

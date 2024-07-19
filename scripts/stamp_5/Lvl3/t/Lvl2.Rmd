@@ -1,0 +1,139 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+```{r}
+suppressPackageStartupMessages({
+library(SingleCellExperiment)
+library(tidyverse)
+library(dplyr)
+library(here)
+library(scater)
+library(scuttle)
+library(glue)
+library(qs)
+library(parallel)
+library(scran)
+library(BiocParallel)
+library(BiocNeighbors)
+library(BiocSingular)
+library(data.table)
+})
+```
+
+# Load bin functions
+```{r}
+dir <- glue("{here()}")
+source(glue("{dir}/scripts/misc/paths.R"))
+source(glue("{dir}/scripts/misc/BIN.R"))
+```
+
+## Load data
+```{r}
+sub <- "T"
+res_dir <- paste0(proj_dir, "/data/stamp_5/processed/Lvl2/",sub)
+sce <- qread(glue("{res_dir}/clust_lvl2_sce.qs"))
+```
+
+
+```{r}
+pal <- palette_general()
+length(pal) <- length(unique(sce$label))
+names(pal) <- unique(sce$label)
+```
+
+## Score markers
+```{r}
+sce$label <- as.factor(sce$label)
+markers <- scoreMarkers(sce, sce$label, lfc = 0.25, BPPARAM = bp)
+```
+
+```{r}
+# Clean markers list
+transform_marker <- function(marker_df, cluster_name) {
+  marker_df <- as.data.frame(marker_df) %>%
+    select(median.logFC.cohen, mean.logFC.cohen) %>%
+    arrange(desc(median.logFC.cohen)) %>%
+    filter(median.logFC.cohen > 0.25) %>%
+    mutate(gene = rownames(.), cluster = as.numeric(cluster_name))
+  rownames(marker_df) <- NULL
+  return(marker_df)
+}
+
+# Apply the function to each element of the markers list along with their names
+markers <- mapply(transform_marker, markers, names(markers), SIMPLIFY = FALSE)
+```
+
+```{r}
+top_markers <- bind_rows(markers) %>%
+  arrange(cluster,desc(mean.logFC.cohen), .by_group = TRUE) %>%
+  group_by(cluster) %>%
+  slice_head(n = 5)
+```
+
+
+```{r}
+feats <- c("CD3E","CD3D","CD4","CD8A","CD8B","FCGR3A","NCAM1","NGK7")
+```
+
+```{r}
+create_plots(sce, "label", intersect(top_markers$gene, rownames(sce)), pal)
+```
+
+```{r}
+create_plots(sce, "label", intersect(feats, rownames(sce)), pal)
+```
+
+# Annotation
+```{r}
+sce$lvl2[sce$label %in% c(1,10,11,12,2,3,4)] <- "CD4"
+sce$lvl2[sce$label %in% c(6,7,8)] <- "CD8"
+sce$lvl2[sce$label == 5] <- "NK"
+sce$lvl2[sce$label == 9] <- "LowQ"
+```
+
+```{r}
+sce$lvl2 <- factor(sce$lvl2, levels = c("CD4","CD8","NK", "LowQ"))
+```
+
+```{r}
+create_plots(sce, "lvl2", intersect(feats, rownames(sce)), pal_lvl2_t)
+```
+
+```{r}
+df <- as.data.frame(colData(sce))
+qc_metrics <- wrap_plots(
+    plot_density(df, "sum", "lvl2", pal_lvl2_t, "Counts",200),
+    plot_density(df, "detected", "lvl2", pal_lvl2_t, "Features",150),
+    plot_density(df, "cell_area", "lvl2", pal_lvl2_t, "Cell Area",500),
+    plot_density(df, "nucleus_area", "lvl2", pal_lvl2_t, "Nucleus Area",500),
+    ncol = 2, nrow = 2) +
+plot_annotation(tag_levels = "A")
+```
+
+
+# Save plots
+```{r}
+outdir <- glue("{plt_dir}/stamp_5/Lvl2/{sub}")
+if(!dir.exists(paste0(outdir))){
+  dir.create(outdir, recursive = TRUE)
+}
+pdf(paste0(outdir,"/lvl2.pdf"), width = 15, height = 10)
+create_plots(sce, "label", intersect(top_markers$gene, rownames(sce)), pal)
+create_plots(sce, "label", intersect(feats, rownames(sce)), pal)
+create_plots(sce, "lvl2", intersect(feats, rownames(sce)), pal_lvl2_t)
+qc_metrics
+dev.off()
+```
+
+
+```{r}
+qsave(sce, glue("{res_dir}/lvl2_sce.qs"), nthreads = 8)
+
+dir <- glue("{markers_dir}/stamp5/Lvl2/{sub}")
+if(!dir.exists(dir)){
+  dir.create(dir, recursive = TRUE)
+}
+write.csv(markers, glue("{dir}/markers_lvl2.csv"))
+```

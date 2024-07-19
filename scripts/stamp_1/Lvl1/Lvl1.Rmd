@@ -1,0 +1,77 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+```{r}
+suppressPackageStartupMessages({
+library(SingleCellExperiment)
+library(tidyverse)
+library(dplyr)
+library(here)
+library(scater)
+library(scuttle)
+library(glue)
+library(qs)
+library(parallel)
+library(scran)
+library(BiocParallel)
+library(BiocNeighbors)
+library(BiocSingular)
+library(data.table)
+})
+```
+
+```{r}
+dir <- glue("{here()}")
+source(glue("{dir}/scripts/misc/paths.R"))
+source(glue("{dir}/scripts/misc/BIN.R"))
+```
+
+
+```{r}
+res_dir <- paste0(proj_dir, "/data/stamp_1/processed")
+sce <- HDF5Array::loadHDF5SummarizedExperiment(glue("{res_dir}/clust_sce"))
+```
+
+
+```{r}
+pal <- palette_general()
+length(pal) <- length(unique(sce$label))
+names(pal) <- unique(sce$label)
+```
+
+
+```{r}
+create_plots(sce, "label", intersect(feats_cosmx, rownames(sce)), pal)
+```
+
+```{r}
+sce$lvl1[sce$label == "1"] <- "B"
+sce$lvl1[sce$label == "2"] <- "T"
+sce$lvl1[sce$label == "3"] <- "T"
+sce$lvl1[sce$label == "4"] <- "Myeloid"
+```
+
+```{r}
+sce$lvl1 <- factor(sce$lvl1, levels = c("T","B","Myeloid"))
+```
+
+
+```{r}
+pal_lvl1 <- c(pal_lvl1)
+```
+
+```{r}
+outdir <- glue("{plt_dir}/stamp_1")
+if(!dir.exists(paste0(outdir))){
+  dir.create(outdir)
+}
+pdf(paste0(outdir,"/lvl1.pdf"), width = 12, height = 8)
+create_plots(sce, "lvl1", intersect(feats_cosmx, rownames(sce)), pal_lvl1)
+dev.off()
+```
+
+```{r}
+qsave(sce, glue("{res_dir}/lvl1_sce.qs"), nthreads = 8)
+```

@@ -1,0 +1,44 @@
+# Libraries
+suppressPackageStartupMessages({
+  library(SingleCellExperiment)
+  library(tidyverse)
+  library(dplyr)
+  library(here)
+  library(scater)
+  library(scuttle)
+  library(glue)
+  library(qs)
+  library(parallel)
+  library(scran)
+  library(BiocParallel)
+  library(BiocNeighbors)
+  library(BiocSingular)
+})
+
+# Misc and paths
+dir <- glue("{here()}")
+source(glue("{dir}/scripts/misc/paths.R"))
+source(glue("{dir}/scripts/misc/BIN.R"))
+
+# Load data
+res_dir <- paste0(proj_dir, "/data/stamp_5/processed")
+sce <- qread(glue("{res_dir}/proc_sce.qs"))
+
+sce
+
+# sce <- sce[,1:1000]
+
+# Build SNN graph
+snn.gr <- buildSNNGraph(sce, BNPARAM=AnnoyParam(), use.dimred="PCA", BPPARAM = bp)
+
+# Run Louvain
+clusters <- igraph::cluster_leiden(snn.gr, resolution_parameter = 0.0001)
+
+# Assign labels
+sce$label <- as.character(clusters$membership)
+table(sce$label)
+
+plotReducedDim(sce, "UMAP", colour_by ="label", point_size = 0.001, text_by = "label", rasterise = F)
+
+# Save
+qsave(sce, glue("{res_dir}/clust_sce.qs"), nthreads = 8)
