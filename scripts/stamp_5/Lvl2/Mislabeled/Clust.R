@@ -21,31 +21,32 @@ source(glue("{dir}/scripts/misc/paths.R"))
 source(glue("{dir}/scripts/misc/BIN.R"))
 
 # Load data
-sub <- "Undefined"
-res_dir <- paste0(proj_dir, "/data/stamp_5/processed/Lvl3/",sub)
+sub <- "B"
+res_dir <- paste0(proj_dir, "/data/stamp_5/processed/Lvl2/",sub)
 sce <- qread(glue("{res_dir}/proc_sce.qs"))
 
 sce
 
-#sce <- sce[,1:50000]
+#sce <- sce[,1:100000]
 
 # Annoy Algorithm
 # Build SNN graph
-snn.gr <- buildSNNGraph(sce, BNPARAM=AnnoyParam(ntrees = 200), use.dimred="PCA", BPPARAM = bp)
-# Run Leiden
-annoy <- igraph::cluster_leiden(snn.gr, resolution_parameter = 0.003)
-
-
+snn.gr <- buildSNNGraph(sce, type = "jaccard", BNPARAM=AnnoyParam(ntrees = 200), use.dimred="PCA", BPPARAM = bp)
+# Run Louvain
+annoy <- igraph::cluster_louvain(snn.gr, resolution = 0.5)
+annoy2 <- igraph::cluster_louvain(snn.gr, resolution = 1)
 # Assign labels
 #sce$leiden <- as.character(leiden)
 sce$label <- as.character(annoy$membership)
+sce$label2 <- as.character(annoy2$membership)
+
 #table(sce$leiden)
 table(sce$label)
 
-plotReducedDim(sce, "UMAP", colour_by = "label", text_by = "label", point_size = 1, rasterise = F, scattermore = T)
+plotReducedDim(sce, "UMAP", colour_by = "label", text_by = "label", point_size = 1, raster = F, scattermore = T)
+plotReducedDim(sce, "UMAP", colour_by = "label2", text_by = "label2", point_size = 1, raster = F, scattermore = T)
 
 # Save
-qsave(sce, glue("{res_dir}/clust_sce.qs"))
-
+qsave(sce, glue("{res_dir}/clust_lvl2_sce.qs"))
 
 

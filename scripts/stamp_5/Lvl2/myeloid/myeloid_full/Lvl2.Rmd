@@ -31,11 +31,15 @@ source(glue("{dir}/scripts/misc/BIN.R"))
 
 ## Load data
 ```{r}
-sub <- "Undefined"
-res_dir <- paste0(proj_dir, "/data/stamp_5/processed/Lvl3/",sub)
-sce <- qread(glue("{res_dir}/clust_sce.qs"))
+lin <- "Myeloid"
+sub <- "Myeloid"
+res_dir <- paste0(proj_dir, "/data/stamp_5/processed/Lvl2/",lin,"/",sub)
+sce <- qread(glue("{res_dir}/clust_lvl2_sce2.qs"))
 ```
 
+```{r}
+sce$label <- sce$label2
+```
 
 ```{r}
 pal <- palette_general()
@@ -46,7 +50,7 @@ names(pal) <- unique(sce$label)
 ## Score markers
 ```{r}
 sce$label <- as.factor(sce$label)
-markers <- scoreMarkers(sce, sce$label, lfc = 0.2, BPPARAM = bp)
+markers <- scoreMarkers(sce, sce$label, lfc = 0.25, BPPARAM = bp)
 ```
 
 ```{r}
@@ -55,7 +59,7 @@ transform_marker <- function(marker_df, cluster_name) {
   marker_df <- as.data.frame(marker_df) %>%
     select(median.logFC.cohen, mean.logFC.cohen) %>%
     arrange(desc(median.logFC.cohen)) %>%
-   # filter(median.logFC.cohen > 0.25) %>%
+    filter(median.logFC.cohen > 0.25) %>%
     mutate(gene = rownames(.), cluster = as.numeric(cluster_name))
   rownames(marker_df) <- NULL
   return(marker_df)
@@ -80,12 +84,12 @@ lapply(unique(markers$cluster), function(cl) {
   addWorksheet(wb, paste0("Cluster_", cl))
   writeData(wb, sheet = paste0("Cluster_", cl), markers[markers$cluster == cl, ])
 })
-dir <- glue("{markers_dir}/stamp5/Lvl3/{sub}")
-if(!dir.exists(paste0(dir))){
-  dir.create(paste0(dir), recursive = TRUE)
-}
 # Save the workbook
-saveWorkbook(wb, glue("{dir}/markers.xlsx"), overwrite = TRUE)
+mrkr <- glue("{markers_dir}/{lin}/{sub}")
+if(!dir.exists(mrkr)){
+  dir.create(mrkr, recursive = TRUE)
+}
+saveWorkbook(wb, glue("{mrkr}/markers_lvl2_2.xlsx"), overwrite = TRUE)
 ```
 
 ```{r}
@@ -97,39 +101,58 @@ top_markers <- markers %>%
 
 
 ```{r}
-feats <- c("CD3E","CD3D","CD4","CD8A","CD8B","FCGR3A","NCAM1","NGK7")
+#feats <- c("CD3E","CD3D","CD4","CD8A","CD8B","FCGR3A","NCAM1","NGK7")
+feats <- c("CD14","CD163","ITGAM","FCGR1A","FCGR3A","CD68","CD86","ITGAX","CD86","CD1C","ARG1")
 ```
 
 ```{r}
-create_plots(sce, "label", intersect(top_markers$gene, rownames(sce)), pal)
+create_plots2(sce, "label", intersect(top_markers$gene, rownames(sce)), pal)
 ```
 
 ```{r}
-create_plots(sce, "label", intersect(feats, rownames(sce)), pal)
+create_plots2(sce, "label", intersect(feats, rownames(sce)), pal)
 ```
 
 # Annotation
 ```{r}
-sce$lvl3[sce$label %in% c(2,3,4,6,7,5)] <- "CD4"
-sce$lvl3[sce$label %in% c(1)] <- "Undefined"
+sce$lvl2[sce$label == 1] <- "CD14+ Mono"
+sce$lvl2[sce$label == 2] <- "CD14+ Mono"
+sce$lvl2[sce$label == 6] <- "CD14+ Mono"
+sce$lvl2[sce$label == 3] <- "LowQ"
+sce$lvl2[sce$label == 4] <- "CD16+ Mono"
+sce$lvl2[sce$label == 5] <- "Int Mono"
+sce$lvl2[sce$label == 7] <- "Int Mono"
+sce$lvl2[sce$label == 8] <- "CD1C+ DCs"
+sce$lvl2[sce$label == 9] <- "LowQ"
 ```
 
 ```{r}
-sce$lvl3 <- factor(sce$lvl3, levels = c("CD4","Undefined"))
+unique(sce$lvl2)
+```
+
+
+```{r}
+sce$lvl2 <- factor(sce$lvl2, levels = c("CD14+ Mono","Int Mono", "CD16+ Mono", "CD1C+ DCs",
+                                        "LowQ"))
 ```
 
 ```{r}
-pal_anno <- c(pal_lvl2_t, "Undefined" = "grey")
-create_plots(sce, "lvl3", intersect(feats, rownames(sce)), pal_anno)
+pal_lvl2 <- palette_general()
+names(pal_lvl2) <- unique(sce$lvl2)
+```
+
+```{r}
+wh(30,15)
+create_plots2(sce, "lvl2", intersect(feats, rownames(sce)), pal_lvl2)
 ```
 
 ```{r}
 df <- as.data.frame(colData(sce))
 qc_metrics_anno <- wrap_plots(
-    plot_density(df, "sum", "lvl3", pal_anno, "Counts",200),
-    plot_density(df, "detected", "lvl3", pal_anno, "Features",150),
-    plot_density(df, "cell_area", "lvl3", pal_anno, "Cell Area",500),
-    plot_density(df, "nucleus_area", "lvl3", pal_anno, "Nucleus Area",500),
+    plot_density(df, "sum", "lvl2", pal_lvl2, "Counts",200),
+    plot_density(df, "detected", "lvl2", pal_lvl2, "Features",150),
+    plot_density(df, "cell_area", "lvl2", pal_lvl2, "Cell Area",500),
+    plot_density(df, "nucleus_area", "lvl2", pal_lvl2, "Nucleus Area",500),
     ncol = 2, nrow = 2) +
 plot_annotation(tag_levels = "A")
 
@@ -146,20 +169,20 @@ plot_annotation(tag_levels = "A")
 
 # Save plots
 ```{r}
-outdir <- glue("{plt_dir}/stamp_5/Lvl3/{sub}")
+outdir <- glue("{plt_dir}/stamp_5/Lvl2/{lin}/{sub}")
 if(!dir.exists(paste0(outdir))){
   dir.create(outdir, recursive = TRUE)
 }
-pdf(paste0(outdir,"/lvl3.pdf"), width = 15, height = 10)
-create_plots(sce, "label", intersect(top_markers$gene, rownames(sce)), palette_general())
+pdf(paste0(outdir,"/lvl2.pdf"), width = 15, height = 10)
+create_plots2(sce, "label", intersect(top_markers$gene, rownames(sce)), pal)
 qc_metrics_label
-create_plots(sce, "label", intersect(feats, rownames(sce)), palette_general())
-#create_plots(sce, "lvl3", intersect(feats, rownames(sce)), pal_lvl2_t)
-#qc_metrics_anno
+create_plots2(sce, "label", intersect(feats, rownames(sce)), pal)
+create_plots2(sce, "lvl2", intersect(feats, rownames(sce)), pal_lvl2)
+qc_metrics_anno
 dev.off()
 ```
 
 
 ```{r}
-qsave(sce, glue("{res_dir}/lvl3_sce.qs"), nthreads = 8)
+qsave(sce, glue("{res_dir}/lvl2_sce.qs"), nthreads = 8)
 ```

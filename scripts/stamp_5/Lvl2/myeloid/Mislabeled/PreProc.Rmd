@@ -30,14 +30,15 @@ source(glue("{dir}/scripts/misc/BIN.R"))
 ```
 
 ```{r}
-data_dir <- paste0(proj_dir, "/data/stamp_5/processed/Lvl2/T")
+lin <- "Myeloid"
+data_dir <- paste0(proj_dir, "/data/stamp_5/processed/Lvl2/",lin)
 sce <- qread(glue("{data_dir}/lvl2_sce.qs"))
 ```
 
 
 ## Subset
 ```{r}
-sub <- "CD4"
+sub <- "Mislabeled"
 sce <- sce[,sce$lvl2 == sub]
 sce
 ```
@@ -80,14 +81,14 @@ gg_hvg
 ```{r}
 set.seed(101001)
 sce <- fixedPCA(sce, subset.row = hvg,BSPARAM=IrlbaParam())
-num_pcs_to_retain <- 50
 ```
 
 
 ```{r}
+wh(6,5)
+num_pcs_to_retain <- 20
 percent.var <- attr(reducedDim(sce), "percentVar")
 
-# Create a data frame for ggplot
 data <- data.frame(PC = 1:length(percent.var), Variance = percent.var)
 
 # Plot using ggplot2
@@ -125,16 +126,24 @@ gg_um
 
 ```{r}
 wh(12,10)
-wrap_plots(gg_hvg, gg_var, gg_pca, gg_um, ncol = 2, nrow = 2) +
+library(scales)
+combined <- wrap_plots(gg_hvg, gg_var, gg_pca, gg_um, ncol = 2, nrow = 2) +
   plot_annotation(tag_levels = "A") + 
-  plot_annotation(title = glue("Stamp 5 - {sub}"), subtitle = glue("N = {comma(ncol(sce))} cells"))
+  plot_annotation(title = glue("Stamp 5 - {sub} from {lin}"), subtitle = glue("N = {comma(ncol(sce))} cells"))
+```
 
+```{r}
+pdf_dir <- paste0(plt_dir, "/stamp_5/Lvl2/",lin,"/",sub)
+if (!dir.exists(pdf_dir)) dir.create(pdf_dir, recursive = T)
+pdf(glue("{pdf_dir}/PreProc.pdf"), width = 16, height = 12)
+combined
+dev.off()
 ```
 
 
 ## Save
 ```{r}
-res_dir <- paste0(proj_dir, "/data/stamp_5/processed/Lvl3/",sub)
+res_dir <- paste0(proj_dir, "/data/stamp_5/processed/Lvl2/",lin,"/",sub)
 if (!dir.exists(res_dir)) dir.create(res_dir, recursive = T)
 
 qsave(sce, glue("{res_dir}/proc_sce.qs"))
