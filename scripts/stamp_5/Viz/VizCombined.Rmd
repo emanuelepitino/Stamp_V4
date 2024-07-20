@@ -1,0 +1,240 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+```{r}
+suppressPackageStartupMessages({
+library(SingleCellExperiment)
+library(tidyverse)
+library(dplyr)
+library(here)
+library(scater)
+library(scuttle)
+library(glue)
+library(qs)
+library(parallel)
+library(scran)
+library(BiocParallel)
+library(BiocNeighbors)
+library(BiocSingular)
+library(data.table)
+})
+```
+
+# Load bin functions
+```{r}
+dir <- glue("{here()}")
+source(glue("{dir}/scripts/misc/paths.R"))
+source(glue("{dir}/scripts/misc/BIN.R"))
+```
+
+## Load data
+```{r}
+myeloid <- qread(glue("{proj_dir}/data/stamp_5/processed/Lvl2/Myeloid/Myeloid/lvl2_sce.qs"))
+B <- qread(glue("{proj_dir}/data/stamp_5/processed/Lvl2/B/B/lvl2_sce.qs"))
+T <- qread(glue("{proj_dir}/data/stamp_5/processed/Lvl2/T/lvl2_sce.qs"), nthreads = 5)
+```
+
+```{r}
+sce <- cbind(myeloid,B,T)
+```
+
+
+```{r}
+sce$Cell_Lineage <- sce$lvl1
+sce$Cell_Type <- sce$lvl2
+sce$Cell_Lineage <- factor(sce$Cell_Lineage, levels = c("T","B","Myeloid"))
+levels(sce$Cell_Type)[levels(sce$Cell_Type) == "Th2"] <- "Th"
+```
+
+```{r}
+pal <- palette_general()
+names(pal) <- unique(sce$Cell_Type)
+```
+
+## Umap plots
+```{r}
+um_list <- list()
+
+for(i in unique(sce$Cell_Lineage)) {
+  
+sub <- sce[,sce$Cell_Lineage == i]
+
+um_list[[i]] <- plotReducedDim(sub, "UMAP", colour_by = "Cell_Type", scattermore = TRUE, rasterise = T) +
+                      theme(legend.position = "bottom", legend.justification = "center")  +
+                      scale_color_manual(values = pal) +
+                      guides(color = guide_legend(ncol = 3,override.aes = list(size = 3, alpha = 1))) +
+                      labs(color = "", title = unique(sub$Cell_Lineage),
+                           subtitle = glue("N = {number({ncol(sub)}, big.mark = '.')} cells"))
+}
+```
+
+```{r}
+pdf(glue("{plt_dir}/combined_umap.pdf"), width = 15, height = 5)
+wrap_plots(um_list[[3]],um_list[[2]],um_list[[1]], ncol = 3)
+dev.off()
+```
+
+```{r}
+pal_lin <- palette_general()
+names(pal_lin) <- unique(sce$Cell_Lineage)
+```
+
+```{r}
+```
+
+## QC metrics plots
+```{r}
+df <- as.data.frame(colData(sce))
+qc_metrics_lin <- wrap_plots(
+    plot_density(df, "sum", "Cell_Lineage", pal_lin, "Counts",200),
+    plot_density(df, "detected", "Cell_Lineage", pal_lin, "Features",150),
+    plot_density(df, "cell_area", "Cell_Lineage", pal_lin, "Cell Area",500),
+    plot_density(df, "nucleus_area", "Cell_Lineage", pal_lin, "Nucleus Area",500),
+    ncol = 2, nrow = 2) +
+plot_annotation(tag_levels = "A")
+```
+
+```{r}
+qc_metrics_anno <- wrap_plots(
+    plot_density(df, "sum", "Cell_Type", pal, "Counts",200),
+    plot_density(df, "detected", "Cell_Type", pal, "Features",150),
+    plot_density(df, "cell_area", "Cell_Type", pal, "Cell Area",500),
+    plot_density(df, "nucleus_area", "Cell_Type", pal, "Nucleus Area",500),
+    ncol = 2, nrow = 2) +
+plot_annotation(tag_levels = "A")
+```
+
+```{r}
+pdf(glue("{plt_dir}/combined_qcmetrics.pdf"), width = 20, height = 10)
+qc_metrics_lin +
+  theme(axis.text = element_text(size = 14, color = "black"), axis.title = element_text(size = 14, color = "black"))
+
+qc_metrics_anno +
+  theme(axis.text = element_text(color = "black"), axis.title = element_text(color = "black"))
+dev.off()
+```
+
+## Gene expression
+
+```{r}
+feats_lin <- c("CD3E","CD3D","CD247","NGK7","NCAM1",
+           "CD19","CD79A","CD79B",
+           "CD14","FCGR3A","CD68","CD86")
+```
+
+```{r}
+feats <- c("CD3E","CD3D","CD247","CD4","CCR7","SELL","TCF7","IL7R","GATA3","FOXP3","CTLA4",
+           "IL2RA","CD8A","CD8B","PRF1","GZMA","NGK7","GZMK",
+           "TCF7","IL7R","NKG7","GNLY","NCAM1",
+           "CD19","CD79A","CD79B","IGHM",
+           "BANK1","CD37","MS4A1","TCL1A","IGHG1","IGHG2","IGHG3","IGHG4","IGHGP","IGKC","STMN1","XBP1","MZB1",
+           "S100A9",
+           "CD14","CD163","FCGR3A","CD68","CD86","CD86","CD1C",
+           "TCF7","IL7R","NKG7","GNLY")
+```
+
+```{r}
+gg_dots <- function(sce, features, variable){
+  
+plot <- plotDots(sce, features = intersect(features, rownames(sce)), group = variable, scale =TRUE, center = TRUE) +
+ coord_flip() +
+ theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+
+return(plot)
+}
+```
+
+```{r}
+wh(8,4)
+dots_lin <- gg_dots(sce, features = feats_lin, variable = "Cell_Lineage") +
+  theme(axis.text = element_text(size = 18, color = "black"), axis.title = element_text(size = 20, color = "black"))
+```
+
+```{r}
+sce$Cell_Type <- factor(sce$Cell_Type, levels = c("Naive CD4","Memory CD4","Th","Tregs","Naive CD8",
+                                         "Memory CD8","Cytotoxic CD8",
+                                        "CD56dim CD16+ NK",
+                                         "CD56+ CD16- NK",
+                                        "Naive B","Class Switched B", "Naive IgK+ B", "Class Switched IgK+ B", 
+                                        "Plasmacells",
+                                        "CD14+ Mono","Int Mono", "CD16+ Mono", "CD1C+ DCs",
+                                        "LowQ"))
+```
+
+```{r}
+dots_type <- gg_dots(sce, features = feats, variable = "Cell_Type") +
+  theme(axis.text = element_text(size = 14, color = "black"), axis.title = element_text(size = 14, color = "black"))
+
+```
+
+```{r}
+pdf(glue("{plt_dir}/combined_dots.pdf"), width = 20, height = 8)
+dots_lin
+dots_type
+dev.off()
+```
+
+
+## Proportions
+```{r}
+library(scales)
+  cells <- as.data.frame(table(sce[["Cell_Lineage"]])) %>%
+    dplyr::rename(Cluster = Var1) %>%
+    mutate(pct = round(Freq / sum(Freq), 3))%>%
+    mutate(pct = round(Freq / sum(Freq), 3)) %>%
+    arrange(pct) %>%  # Arrange by decreasing percentage
+    mutate(Cluster = factor(Cluster, levels = Cluster))  
+
+gg_prop_full <- ggplot(cells, aes(x = "", y = pct, fill = Cluster)) +
+    geom_bar(stat = "identity") +
+    scale_fill_manual(values = pal_full) +
+    geom_text(aes(label = paste0(pct * 100, "%")), position = position_stack(vjust = 0.5), size = 3) +
+    theme_minimal() +
+    labs(x = "", y = "Percentage", fill = "", title = "PBMCs",
+         subtitle = glue("N = {number(sum(cells$Freq), big.mark = '.')} cells")) +
+    theme(axis.text.x = element_blank(), axis.text = element_text(size = 15, color = "black"),
+        text = element_text(size = 20),
+        axis.ticks.x = element_blank(), legend.position = "right")
+```
+
+```{r}
+# Subset the data
+prop <- function(sce, subset){
+  
+sub <- sce[, sce$Cell_Lineage == subset]
+sub$Cell_Type <- as.character(sub$Cell_Type)
+
+# Calculate cell counts and percentages
+cells <- as.data.frame(table(sub[["Cell_Type"]])) %>%
+  dplyr::rename(Cluster = Var1) %>%
+  mutate(pct = round(Freq / sum(Freq), 3)) %>%
+  arrange(pct) %>%  # Arrange by decreasing percentage
+  mutate(Cluster = factor(Cluster, levels = Cluster))  # Reorder factor levels
+
+# Plot with ggplot2
+plot <- ggplot(cells, aes(x = "", y = pct, fill = Cluster)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = pal_full) +
+  geom_text(aes(label = paste0(pct * 100, "%")), position = position_stack(vjust = 0.5), size = 3) +
+  theme_minimal() +
+  labs(x = "", y = "Percentage", fill = "", title = subset,
+         subtitle = glue("N = {number(sum(cells$Freq), big.mark = '.')} cells")) +
+  theme(axis.text.x = element_blank(), axis.text = element_text(size = 15, color = "black"),
+        text = element_text(size = 20),
+        axis.ticks.x = element_blank(), legend.position = "right")
+return(plot)
+}
+```
+
+
+```{r}
+pdf(glue("{plt_dir}/combined_proportions.pdf"), width = 20, height = 8)
+wrap_plots(gg_prop_full,prop(sce,"T"), prop(sce,"B"),prop(sce,"Myeloid"), ncol = 4)
+dev.off()
+```
+
+```{r}
+```
+
