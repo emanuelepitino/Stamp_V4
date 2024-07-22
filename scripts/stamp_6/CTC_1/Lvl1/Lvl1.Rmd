@@ -30,7 +30,7 @@ source(glue("{dir}/scripts/misc/BIN.R"))
 
 
 ```{r}
-res_dir <- paste0(proj_dir, "/data/stamp_1/processed")
+res_dir <- paste0(proj_dir, "/data/stamp_6/CTC_1/processed")
 sce <- qread(glue("{res_dir}/clust_sce.qs"))
 ```
 
@@ -41,21 +41,16 @@ length(pal) <- length(unique(sce$label))
 names(pal) <- unique(sce$label)
 ```
 
-```{r}
-sce <- addPerCellQCMetrics(sce)
-```
-
-
 ## Clusters analysis
 ```{r}
 gg_clust1 <- create_plots2(sce, "label", intersect(feats_xenium, rownames(sce)), pal)
 
 df <- as.data.frame(colData(sce))
 gg_clust2 <- wrap_plots(
-    plot_density(df, "sum", "label", pal, "Counts",500),
-    plot_density(df, "detected", "label", pal, "Features",300),
-    plot_density(df, "Area.um2", "label", pal, "Cell Area",500),
-  #  plot_density(df, "nucleus_area", "label", pal, "Nucleus Area",500),
+    plot_density(df, "sum", "label", pal, "Counts",200),
+    plot_density(df, "detected", "label", pal, "Features",150),
+    plot_density(df, "cell_area", "label", pal, "Cell Area",500),
+    plot_density(df, "nucleus_area", "label", pal, "Nucleus Area",500),
     ncol = 2, nrow = 2) +
 plot_annotation(tag_levels = "A")
 ```
@@ -63,12 +58,18 @@ plot_annotation(tag_levels = "A")
 ## Annotation
 Here we want to distinguish main lineages such as T/B lymphocytes and Myeloid cells.
 ```{r}
-sce$lvl1[sce$label == "1"] <- "B"
-sce$lvl1[sce$label == "2"] <- "T"
+sce$lvl1[sce$label == "1"] <- "T"
+sce$lvl1[sce$label == "2"] <- "LowQ"
 sce$lvl1[sce$label == "3"] <- "T"
-sce$lvl1[sce$label == "4"] <- "T"
+sce$lvl1[sce$label == "4"] <- "LowQ"
 sce$lvl1[sce$label == "5"] <- "Myeloid"
-sce$lvl1[sce$label == "6"] <- "LowQ"
+sce$lvl1[sce$label == "6"] <- "T"
+sce$lvl1[sce$label == "7"] <- "LowQ" # i know it's NK, but we want to group with T for the moment
+sce$lvl1[sce$label == "8"] <- "B"
+sce$lvl1[sce$label == "9"] <- "Myeloid"
+sce$lvl1[sce$label == "10"] <- "Myeloid"
+sce$lvl1[sce$label == "11"] <- "T"
+
 ```
 
 ```{r}
@@ -81,25 +82,22 @@ pal_lvl1 <- c(pal_lvl1, "LowQ" = "grey")
 ```
 
 ```{r}
-feats_cosmx <- feats_cosmx[!feats_cosmx %in% c("CMKLR1", "CD1C")]
-```
-
-```{r}
 # A
-gg_anno1 <- create_plots2(sce, "lvl1", intersect(feats_cosmx, rownames(sce)), pal_lvl1)
+gg_anno1 <- create_plots2(sce, "lvl1", intersect(feats_xenium, rownames(sce)), pal_lvl1)
 
 # B
 df <- as.data.frame(colData(sce))
 gg_anno_2 <- wrap_plots(
-    plot_density(df, "sum", "lvl1", pal_lvl1, "Counts",500),
-    plot_density(df, "detected", "lvl1", pal_lvl1, "Features",300),
-    plot_density(df, "Area.um2", "lvl1", pal_lvl1, "Cell Area",500),
+    plot_density(df, "sum", "lvl1", pal_lvl1, "Counts",200),
+    plot_density(df, "detected", "lvl1", pal_lvl1, "Features",150),
+    plot_density(df, "cell_area", "lvl1", pal_lvl1, "Cell Area",500),
+    plot_density(df, "nucleus_area", "lvl1", pal_lvl1, "Nucleus Area",500),
     ncol = 2, nrow = 2) +
 plot_annotation(tag_levels = "A")
 ```
 
 ```{r}
-outdir <- glue("{plt_dir}/stamp_1")
+outdir <- glue("{plt_dir}/stamp_5")
 if(!dir.exists(paste0(outdir))){
   dir.create(outdir)
 }

@@ -20,28 +20,36 @@ library(BiocParallel)
 library(BiocNeighbors)
 library(BiocSingular)
 library(data.table)
-library(scales)
 })
 ```
 
 ```{r}
-sub <- "Whole PBMCs"
 dir <- glue("{here()}")
 source(glue("{dir}/scripts/misc/paths.R"))
 source(glue("{dir}/scripts/misc/BIN.R"))
 ```
 
 ```{r}
-res_dir <- paste0(proj_dir, "/data/stamp_1/processed")
-sce <- HDF5Array::loadHDF5SummarizedExperiment(glue("{res_dir}/qc_sce"))
+data_dir <- paste0(proj_dir, "/data/stamp_1/processed")
+sce <- qread(glue("{data_dir}/lvl1_sce.qs"))
 ```
 
-```{r} 
+```{r}
+dec.var_x <- qread(glue("{proj_dir}/data/stamp_5/processed/Lvl2/T/dec_var.qs"))
+hvg <- getTopHVGs(dec.var_x,fdr.threshold =  0.9)
+length(hvg)
+```
+
+
+## Subset
+```{r}
+sub <- "T"
+sce <- sce[,sce$lvl1 == sub]
 sce
 ```
 
 ```{r}
-sce <- logNormCounts(sce, subset.row = NULL, BPPARAM = bp)
+sce <- logNormCounts(sce, BPPARAM = bp)
 ```
 
 
@@ -53,6 +61,11 @@ sce <- logNormCounts(sce, subset.row = NULL, BPPARAM = bp)
 ```{r}
 dec.var <- modelGeneVar(sce, BPPARAM = bp)
 hvg <- getTopHVGs(dec.var,fdr.threshold =  0.9)
+length(hvg)
+```
+
+```{r}
+hvg <- getTopHVGs(dec.var,prop =  0.9)
 length(hvg)
 ```
 
@@ -77,17 +90,15 @@ gg_hvg
 
 ```{r}
 set.seed(101001)
-sce <- fixedPCA(sce, subset.row = hvg,BSPARAM=IrlbaParam())
+sce <- fixedPCA(sce, subset.row = intersect(hvg, rownames(sce)),BSPARAM=IrlbaParam())
 ```
-
 
 
 ```{r}
 wh(6,5)
-num_pcs_to_retain <- 20
+num_pcs_to_retain <- 50
 percent.var <- attr(reducedDim(sce), "percentVar")
 
-# Create a data frame for ggplot
 data <- data.frame(PC = 1:length(percent.var), Variance = percent.var)
 
 # Plot using ggplot2
@@ -116,6 +127,7 @@ set.seed(123)
 sce <- runUMAP(sce, dimred="PCA", BPPARAM = bp)
 ```
 
+
 ```{r}
 wh(6,5)
 gg_um <- plotReducedDim(sce, "UMAP", scattermore = TRUE) 
@@ -124,19 +136,26 @@ gg_um
 
 ```{r}
 wh(12,10)
-combined <- wrap_plots(gg_var, gg_hvg, gg_pca, gg_um, ncol = 2, nrow = 2) +
+library(scales)
+combined <- wrap_plots(gg_hvg, gg_var, gg_pca, gg_um, ncol = 2, nrow = 2) +
   plot_annotation(tag_levels = "A") + 
-  plot_annotation(title = glue("Stamp 1 - {sub}"), subtitle = glue("N = {comma(ncol(sce))} cells"))
-
+  plot_annotation(title = glue("Stamp 5 - {sub}"), subtitle = glue("N = {comma(ncol(sce))} cells"))
 ```
 
 ```{r}
-pdf(glue("{plt_dir}/stamp_1/PreProc.pdf"), width = 12, height = 8)
+plot_dir <- glue("{plt_dir}/stamp_1/Lvl2/{sub}")
+if (!dir.exists(plot_dir)) dir.create(plot_dir, recursive = T)
+pdf(glue("{plot_dir}/PreProc.pdf"), width = 16, height = 12)
 combined
 dev.off()
 ```
 
 
+## Save
 ```{r}
-qsave(sce, glue("{res_dir}/proc_sce.qs"), nthreads = 8)
+res_dir <- paste0(proj_dir, "/data/stamp_1/processed/Lvl2/",sub)
+if (!dir.exists(res_dir)) dir.create(res_dir, recursive = T)
+
+qsave(sce, glue("{res_dir}/proc_sce.qs"))
+qsave(dec.var, glue("{res_dir}/dec_var.qs"))
 ```

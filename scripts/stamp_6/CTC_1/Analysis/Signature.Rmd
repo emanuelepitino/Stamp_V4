@@ -1,0 +1,107 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+suppressPackageStartupMessages({
+library(SingleCellExperiment)
+library(tidyverse)
+library(dplyr)
+library(here)
+library(scater)
+library(scuttle)
+library(glue)
+library(qs)
+library(parallel)
+library(scran)
+library(BiocParallel)
+library(BiocNeighbors)
+library(BiocSingular)
+library(data.table)
+library(scales)
+})
+```
+
+```{r}
+sub <- "Whole PBMCs"
+dir <- glue("{here()}")
+source(glue("{dir}/scripts/misc/paths.R"))
+source(glue("{dir}/scripts/misc/BIN.R"))
+```
+
+```{r}
+res_dir <- paste0(proj_dir, "/data/stamp_6/CTC_1/processed")
+sce <- qread(glue("{res_dir}/clust_sce.qs"))
+```
+
+```{r} 
+sce
+```
+
+
+
+```{r}
+feats <- c("AKT1","ANPEP","ARID1A","ATM","BRAF","CDK1","CDK12","CDK2","CDK4","CDK6",
+           "CDKN1A","CDKN1B","CDKN1C","CDKN2A","CDKN2B","CDKN2C","CDKN2D","CENPV","CENPF",
+           "CFC1","CTSD","CTSW","CTSS","GRBB2","GRBB3","GRBB4","GATA2","GATA3","TP53","VEGFA")
+```
+
+
+```{r}
+length(feats)
+length(intersect(feats, rownames(sce)))
+```
+
+```{r}
+sign <- data.frame(gene = feats, signature = "Tumor", mor = 1)
+```
+
+
+```{r}
+library(decoupleR)
+```
+
+```{r}
+ulm_start <- Sys.time()
+res <- decoupleR::run_ulm(
+    mat = counts(sce),
+    network = sign,
+    .source = "signature",
+    .target = "gene",
+    .mor = "mor")
+
+glue::glue("Time to run ulm is {round(difftime(Sys.time(), ulm_start, units = 's'), 0)} seconds")
+```
+
+
+
+```{r}
+res <- res[res$p_value < 0.05,]
+hist(res$score,100)
+```
+
+
+```{r}
+hist(res$p_value)
+```
+
+```{r}
+id <- res$condition[res$score > 5]
+```
+
+
+```{r}
+sce$high_score <- "no"
+sce$high_score[sce$cell_id %in%  res$condition[res$score > 5]] <- "yes"
+```
+
+
+
+```{r}
+m
+```
+
+
+

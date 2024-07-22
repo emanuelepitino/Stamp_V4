@@ -1,0 +1,242 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+```{r}
+suppressPackageStartupMessages({
+library(SingleCellExperiment)
+library(tidyverse)
+library(dplyr)
+library(here)
+library(scater)
+library(scuttle)
+library(glue)
+library(qs)
+library(parallel)
+library(scran)
+library(BiocParallel)
+library(BiocNeighbors)
+library(BiocSingular)
+library(data.table)
+})
+```
+
+# Load bin functions
+```{r}
+dir <- glue("{here()}")
+source(glue("{dir}/scripts/misc/paths.R"))
+source(glue("{dir}/scripts/misc/BIN.R"))
+```
+
+## Load data
+```{r}
+sub <- "B"
+res_dir <- paste0(proj_dir, "/data/stamp_5/processed/Lvl2/",sub)
+sce <- qread(glue("{res_dir}/clust_lvl2_sce.qs"))
+```
+
+```{r}
+sce$label <- sce$label2
+```
+
+```{r}
+pal <- palette_general()
+length(pal) <- length(unique(sce$label))
+names(pal) <- unique(sce$label)
+```
+
+## Score markers
+```{r}
+sce$label <- as.factor(sce$label)
+markers <- scoreMarkers(sce, sce$label, lfc = 0.25, BPPARAM = bp)
+```
+
+```{r}
+# Clean markers list
+transform_marker <- function(marker_df, cluster_name) {
+  marker_df <- as.data.frame(marker_df) %>%
+    select(median.logFC.cohen, mean.logFC.cohen) %>%
+    arrange(desc(median.logFC.cohen)) %>%
+    filter(median.logFC.cohen > 0.25) %>%
+    mutate(gene = rownames(.), cluster = as.numeric(cluster_name))
+  rownames(marker_df) <- NULL
+  return(marker_df)
+}
+
+# Apply the function to each element of the markers list along with their names
+markers <- mapply(transform_marker, markers, names(markers), SIMPLIFY = FALSE)
+
+markers <- bind_rows(markers) %>%
+  arrange(cluster,desc(mean.logFC.cohen), .by_group = TRUE) 
+
+markers$median.logFC.cohen <- round(markers$median.logFC.cohen, 2)
+markers$mean.logFC.cohen <- round(markers$mean.logFC.cohen, 2)
+```
+
+```{r}
+# Save markers
+library(openxlsx)
+# Create a new workbook and add sheets for each cluster
+wb <- createWorkbook()
+lapply(unique(markers$cluster), function(cl) {
+  addWorksheet(wb, paste0("Cluster_", cl))
+  writeData(wb, sheet = paste0("Cluster_", cl), markers[markers$cluster == cl, ])
+})
+# Save the workbook
+mrkr <- glue("{markers_dir}/{sub}")
+if(!dir.exists(mrkr)){
+  dir.create(mrkr, recursive = TRUE)
+}
+saveWorkbook(wb, glue("{mrkr}/markers_lvl2.xlsx"), overwrite = TRUE)
+```
+
+```{r}
+# Take top 5 for viz
+top_markers <- markers %>%
+  group_by(cluster) %>%
+  slice_head(n = 5)
+```
+
+```{r}
+grep("IG", rownames(sce), value = T)
+```
+
+```{r}
+#feats <- c("CD3E","CD3D","CD4","CD8A","CD8B","FCGR3A","NCAM1","NGK7")
+feats <- c("CD19","CD79A","CD79B","IGHM","IGKC",
+           "BANK1","CD37","CD83","MS4A1","IGHG1","IGHG2","IGHG3","IGHG4","IGHGP",
+           "MKI67","STMN1","TCL1A","PRDM1","XBP1","MZB1",
+           "CD3E","TCF7","IL7R","NKG7","KLRK1","GNLY","S100A9","ITGAX","CLEC12A")
+```
+
+```{r}
+create_plots2(sce, "label", intersect(top_markers$gene, rownames(sce)), pal)
+```
+
+```{r}
+create_plots2(sce, "label", intersect(feats, rownames(sce)), pal)
+```
+
+# Annotation
+```{r}
+sce$lvl2[sce$label == 1] <- "Class Switched B"
+sce$lvl2[sce$label == 5] <- "Plasmacells"
+sce$lvl2[sce$label == 10] <- "NK"
+sce$lvl2[sce$label == 2] <- "Naive IgK+ B"
+sce$lvl2[sce$label == 3] <- "Naive B"
+sce$lvl2[sce$label == 4] <- "Naive B"
+sce$lvl2[sce$label == 6] <- "Naive B"
+sce$lvl2[sce$label == 7] <- "LowQ"
+sce$lvl2[sce$label == 8] <- "Myeloid"
+sce$lvl2[sce$label == 9] <- "T"
+```
+
+```{r}
+unique(sce$lvl2)
+```
+
+
+```{r}
+sce$lvl2 <- factor(sce$lvl2, levels = c("Naive B", "Naive IgK+ B", "Class Switched B", 
+                                        "Plasmacells","T","NK","Myeloid","LowQ"))
+```
+
+```{r}
+pal_lvl2 <- palette_general()
+names(pal_lvl2) <- unique(sce$lvl2)
+```
+
+```{r}
+wh(30,15)
+create_plots2(sce, "lvl2", intersect(feats, rownames(sce)), pal_lvl2)
+```
+
+```{r}
+df <- as.data.frame(colData(sce))
+qc_metrics_anno <- wrap_plots(
+    plot_density(df, "sum", "lvl2", pal_lvl2, "Counts",200),
+    plot_density(df, "detected", "lvl2", pal_lvl2, "Features",150),
+    plot_density(df, "cell_area", "lvl2", pal_lvl2, "Cell Area",500),
+    plot_density(df, "nucleus_area", "lvl2", pal_lvl2, "Nucleus Area",500),
+    ncol = 2, nrow = 2) +
+plot_annotation(tag_levels = "A")
+
+
+qc_metrics_label <- wrap_plots(
+    plot_density(df, "sum", "label", pal, "Counts",200),
+    plot_density(df, "detected", "label", pal, "Features",150),
+    plot_density(df, "cell_area", "label", pal, "Cell Area",500),
+    plot_density(df, "nucleus_area", "label", pal, "Nucleus Area",500),
+    ncol = 2, nrow = 2) +
+plot_annotation(tag_levels = "A")
+```
+
+
+# Save plots
+```{r}
+outdir <- glue("{plt_dir}/stamp_5/Lvl2/{sub}")
+if(!dir.exists(paste0(outdir))){
+  dir.create(outdir, recursive = TRUE)
+}
+pdf(paste0(outdir,"/lvl2_full.pdf"), width = 15, height = 10)
+create_plots2(sce, "label", intersect(top_markers$gene, rownames(sce)), pal)
+qc_metrics_label
+create_plots2(sce, "label", intersect(feats, rownames(sce)), pal)
+create_plots2(sce, "lvl2", intersect(feats, rownames(sce)), pal_lvl2)
+qc_metrics_anno
+dev.off()
+```
+
+```{r}
+# Plot without the contamination of T NK Myeloid
+sce_clean <- sce[,sce$lvl2 != "T" & sce$lvl2 != "NK" & sce$lvl2 != "Myeloid"]
+
+feats <- c("CD19","CD79A","CD79B","IGHM","IGKC",
+           "BANK1","CD37","CD83","MS4A1","IGHG1","IGHG2","IGHG3","IGHG4","IGHGP",
+           "MKI67","STMN1","TCL1A","PRDM1","XBP1","MZB1") 
+
+
+df <- as.data.frame(colData(sce_clean))
+qc_metrics_anno <- wrap_plots(
+    plot_density(df, "sum", "lvl2", pal_lvl2, "Counts",200),
+    plot_density(df, "detected", "lvl2", pal_lvl2, "Features",150),
+    plot_density(df, "cell_area", "lvl2", pal_lvl2, "Cell Area",500),
+    plot_density(df, "nucleus_area", "lvl2", pal_lvl2, "Nucleus Area",500),
+    ncol = 2, nrow = 2) +
+plot_annotation(tag_levels = "A")
+
+qc_metrics_label <- wrap_plots(
+    plot_density(df, "sum", "label", pal, "Counts",200),
+    plot_density(df, "detected", "label", pal, "Features",150),
+    plot_density(df, "cell_area", "label", pal, "Cell Area",500),
+    plot_density(df, "nucleus_area", "label", pal, "Nucleus Area",500),
+    ncol = 2, nrow = 2) +
+plot_annotation(tag_levels = "A")
+
+
+pdf(paste0(outdir,"/lvl2_clean.pdf"), width = 15, height = 10)
+create_plots2(sce_clean, "label", intersect(top_markers$gene, rownames(sce)), pal)
+qc_metrics_label
+create_plots2(sce_clean, "label", intersect(feats, rownames(sce)), pal)
+create_plots2(sce_clean, "lvl2", intersect(feats, rownames(sce)), pal_lvl2)
+qc_metrics_anno
+dev.off()
+```
+
+
+```{r}
+qsave(sce, glue("{res_dir}/lvl2_sce.qs"), nthreads = 8)
+```
+
+# Save cell id of the T NK Myeloid cells
+```{r}
+t <- sce[,sce$lvl2 == "T"]
+nk <- sce[,sce$lvl2 == "NK"]
+myeloid <- sce[,sce$lvl2 == "Myeloid"]
+
+qsave(t, file = glue("{proj_dir}/data/stamp_5/processed/Lvl2/Mislabeled/T_from_{sub}.qs"))
+qsave(nk, file = glue("{proj_dir}/data/stamp_5/processed/Lvl2/Mislabeled/NK_from_{sub}.qs"))
+qsave(myeloid, file = glue("{proj_dir}/data/stamp_5/processed/Lvl2/Mislabeled/Myeloid_from_{sub}.qs"))
+```
+

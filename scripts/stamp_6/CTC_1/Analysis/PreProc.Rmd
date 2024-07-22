@@ -32,8 +32,8 @@ source(glue("{dir}/scripts/misc/BIN.R"))
 ```
 
 ```{r}
-res_dir <- paste0(proj_dir, "/data/stamp_1/processed")
-sce <- HDF5Array::loadHDF5SummarizedExperiment(glue("{res_dir}/qc_sce"))
+res_dir <- paste0(proj_dir, "/data/stamp_6/CTC_1/processed")
+sce <- qread(glue("{res_dir}/sce_filt.qs"))
 ```
 
 ```{r} 
@@ -46,40 +46,14 @@ sce <- logNormCounts(sce, subset.row = NULL, BPPARAM = bp)
 
 
 ```{r}
-#sce <- sce[,1:50000]
+#sce <- sce[,1:1000]
 ```
 
-# Model Gene Variances
-```{r}
-dec.var <- modelGeneVar(sce, BPPARAM = bp)
-hvg <- getTopHVGs(dec.var,fdr.threshold =  0.9)
-length(hvg)
-```
-
-```{r}
-dec.var$hvg <- "no"
-dec.var$hvg[rownames(dec.var) %in% hvg] <- "yes"
-table(dec.var$hvg)
-```
-
-
-```{r}
-rowData <- rowData(sce)
-dec.var$Symbol <- ""
-dec.var$Symbol[rownames(dec.var) %in% rowData$ID] <- rowData$Symbol
-```
-
-
-```{r}
-gg_hvg <- plot_hvg(dec.var, sub)
-gg_hvg
-```
 
 ```{r}
 set.seed(101001)
-sce <- fixedPCA(sce, subset.row = hvg,BSPARAM=IrlbaParam())
+sce <- fixedPCA(sce,BSPARAM=IrlbaParam())
 ```
-
 
 
 ```{r}
@@ -124,14 +98,14 @@ gg_um
 
 ```{r}
 wh(12,10)
-combined <- wrap_plots(gg_var, gg_hvg, gg_pca, gg_um, ncol = 2, nrow = 2) +
+combined <- wrap_plots(gg_var, gg_pca, gg_um, ncol = 2, nrow = 2) +
   plot_annotation(tag_levels = "A") + 
-  plot_annotation(title = glue("Stamp 1 - {sub}"), subtitle = glue("N = {comma(ncol(sce))} cells"))
+  plot_annotation(title = glue("Stamp 6 - {sub} + CTCs"), subtitle = glue("N = {comma(ncol(sce))} cells"))
 
 ```
 
 ```{r}
-pdf(glue("{plt_dir}/stamp_1/PreProc.pdf"), width = 12, height = 8)
+pdf(glue("{plt_dir}/stamp_6/PreProc.pdf"), width = 12, height = 8)
 combined
 dev.off()
 ```

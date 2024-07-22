@@ -980,7 +980,7 @@ pal_lvl1 <- c('B' = '#FB5F5C', 'T' = '#77F873', 'Myeloid' = '#7978F7')
 ###############################################################################
 
 ###############################################################################
-feats_cosmx <- c("CD3E","CD3D","CD247","CD4","CD8A","CD8B","NCAM1","NKG7",'CMKLR1','KLRB1','KLRC1','KLRD1','KLRF1','KLRK1',"CD19","CD79A","CD79B","MS4A1","MZB1","IL6","CD1C","CD14","FCGR3A/B","ITGAX")
+feats_cosmx <- c("CD3E","CD3D","CD247","CD4","CD8A","CD8B","NCAM1","NKG7",'KLRB1','KLRC1','KLRD1','KLRF1','KLRK1',"CD19","CD79A","CD79B","MS4A1","MZB1","IL6","CD1C","CD14","FCGR3A/B","ITGAX")
 feats_xenium <- c("CD3E","CD3D","CD247","CD4","CD8A","CD8B","NCAM1","NKG7",'CMKLR1','KLRB1','KLRC1','KLRD1','KLRF1','KLRK1',"CD19","CD79A","CD79B","MS4A1","MZB1","IL6","CD1C","CD14","FCGR3A")
 
 

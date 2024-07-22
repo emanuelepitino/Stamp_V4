@@ -1,0 +1,131 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+suppressPackageStartupMessages({
+library(SingleCellExperiment)
+library(tidyverse)
+library(dplyr)
+library(here)
+library(scater)
+library(scuttle)
+library(glue)
+library(qs)
+library(parallel)
+library(scran)
+library(BiocParallel)
+library(BiocNeighbors)
+library(BiocSingular)
+library(data.table)
+library(scales)
+})
+```
+
+```{r}
+sub <- "Whole PBMCs"
+dir <- glue("{here()}")
+source(glue("{dir}/scripts/misc/paths.R"))
+source(glue("{dir}/scripts/misc/BIN.R"))
+```
+
+```{r}
+res_dir <- paste0(proj_dir, "/data/stamp_6/CTC_1/processed")
+sce <- qread(glue("{res_dir}/clust_sce.qs"))
+```
+
+```{r} 
+sce
+```
+
+# Subset higher outliers for cell area
+```{r}
+out_area <- isOutlier(sce$cell_area, nmads = 4, log = T, type = "higher")
+out_counts <- isOutlier(sce$sum, nmads = 2, log = T, type = "higher")
+table(out_area)
+table(out_counts)
+```
+
+```{r}
+sce$AreaOut <- out_area
+sce$CountsOut <- out_counts
+
+sce$Out <- sce$AreaOut & sce$CountsOut
+table(sce$Out)
+```
+
+```{r}
+sce$Cell_Type <- "PBMCs"
+sce$Cell_Type[sce$Out == TRUE] <- "CTC"
+table(sce$Cell_Type)
+```
+
+
+```{r}
+plotDots(sce, features = c("AREG","GATA3","EGFR"), group = "tst", scale =TRUE, center = TRUE) +
+    coord_flip() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+```
+
+```{r}
+pal <- c("CTC" = "#FF0000", "PBMCs" = "#00FFFF")
+```
+
+```{r}
+df <- as.data.frame(colData(sce))
+
+wrap_plots(
+plot_density(df, "cell_area", "Cell_Type",pal, "Cell Area",10000),
+plot_density(df, "sum", "Cell_Type",pal, "Counts",10000),
+plot_density(df, "detected", "Cell_Type",pal, "Features",10000),
+ncol = 2)
+```
+
+```{r}
+cells <- as.data.frame(table(sce$Cell_Type)) %>%
+    dplyr::rename(Cluster = Var1) %>%
+    mutate(pct = round(Freq / sum(Freq), 5)) %>%
+    arrange(desc(pct)) %>%
+    mutate(Cluster = factor(Cluster, levels = Cluster))
+
+gg_piechart <- ggplot(cells, aes(x = "", y = pct, fill = Cluster)) +
+    geom_bar(stat = "identity", width = 1) +
+    coord_polar(theta = "y") +
+    scale_fill_manual(values = pal) +
+    geom_text(aes(label = paste0(pct * 100, "%")), position = position_stack(vjust = 0.5), size = 3) +
+    theme_minimal() +
+    labs(x = "", y = "Percentage", fill = "",
+         subtitle = glue("PBMCs, N = {sum(cells$Freq[cells$Cluster == 'PBMCs'])}; CTCs, N = {sum(cells$Freq[cells$Cluster == 'CTC'])} ")) +
+    theme(
+        panel.grid = element_blank(),      # Remove grid lines
+        axis.text.x = element_blank(), 
+        axis.ticks.x = element_blank(), 
+        text = element_text(size = 20), 
+        legend.position = "right",
+        plot.subtitle = element_text(hjust = 0.5) # Center the subtitle
+    )
+```
+
+
+```{r}
+combined <- wrap_plots(
+plot_density(df, "cell_area", "Cell_Type",pal, "Cell Area",10000),
+plot_density(df, "sum", "Cell_Type",pal, "Counts",10000),
+plot_density(df, "detected", "Cell_Type",pal, "Features",10000),
+gg_piechart,
+ncol = 2)
+```
+
+
+```{r}
+pdf(glue("{plt_dir}/stamp_6/Metrics_CTCs5.pdf"), width = 12, height = 8)
+combined
+dev.off()
+```
+
+
+```{r}
+qsave(sce, glue("{res_dir}/ctc_sce.qs"), nthreads = 8)
+```
