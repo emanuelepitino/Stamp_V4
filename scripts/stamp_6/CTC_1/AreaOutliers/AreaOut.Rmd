@@ -33,99 +33,138 @@ source(glue("{dir}/scripts/misc/BIN.R"))
 
 ```{r}
 res_dir <- paste0(proj_dir, "/data/stamp_6/CTC_1/processed")
-sce <- qread(glue("{res_dir}/clust_sce.qs"))
+sce_full <- qread(glue("{res_dir}/clust_sce.qs"))
 ```
 
 ```{r} 
-sce
+sce_full
 ```
 
 # Subset higher outliers for cell area
 ```{r}
-out_area <- isOutlier(sce$cell_area, nmads = 4, log = T, type = "higher")
-out_counts <- isOutlier(sce$sum, nmads = 2, log = T, type = "higher")
+out_area <- isOutlier(sce_full$cell_area, nmads = 2, log = T, type = "higher")
 table(out_area)
-table(out_counts)
 ```
 
 ```{r}
-sce$AreaOut <- out_area
-sce$CountsOut <- out_counts
-
-sce$Out <- sce$AreaOut & sce$CountsOut
-table(sce$Out)
+df <- as.data.frame(colData(sce)) %>%
+        filter(sum > mean(sce$sum) & cell_area > attr(out_area,"threshold")["higher"])
+nrow(df)
 ```
 
 ```{r}
-sce$Cell_Type <- "PBMCs"
-sce$Cell_Type[sce$Out == TRUE] <- "CTC"
-table(sce$Cell_Type)
+df <- df %>%
+      arrange(desc(cell_area))
 ```
 
 
 ```{r}
-plotDots(sce, features = c("AREG","GATA3","EGFR"), group = "tst", scale =TRUE, center = TRUE) +
-    coord_flip() +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+ids <- df$cell_id[1:100]
 ```
 
 ```{r}
-pal <- c("CTC" = "#FF0000", "PBMCs" = "#00FFFF")
+sce <- sce_full[,sce_full$cell_id %in% ids]
 ```
 
 ```{r}
-df <- as.data.frame(colData(sce))
-
-wrap_plots(
-plot_density(df, "cell_area", "Cell_Type",pal, "Cell Area",10000),
-plot_density(df, "sum", "Cell_Type",pal, "Counts",10000),
-plot_density(df, "detected", "Cell_Type",pal, "Features",10000),
-ncol = 2)
-```
-
-```{r}
-cells <- as.data.frame(table(sce$Cell_Type)) %>%
-    dplyr::rename(Cluster = Var1) %>%
-    mutate(pct = round(Freq / sum(Freq), 5)) %>%
-    arrange(desc(pct)) %>%
-    mutate(Cluster = factor(Cluster, levels = Cluster))
-
-gg_piechart <- ggplot(cells, aes(x = "", y = pct, fill = Cluster)) +
-    geom_bar(stat = "identity", width = 1) +
-    coord_polar(theta = "y") +
-    scale_fill_manual(values = pal) +
-    geom_text(aes(label = paste0(pct * 100, "%")), position = position_stack(vjust = 0.5), size = 3) +
-    theme_minimal() +
-    labs(x = "", y = "Percentage", fill = "",
-         subtitle = glue("PBMCs, N = {sum(cells$Freq[cells$Cluster == 'PBMCs'])}; CTCs, N = {sum(cells$Freq[cells$Cluster == 'CTC'])} ")) +
-    theme(
-        panel.grid = element_blank(),      # Remove grid lines
-        axis.text.x = element_blank(), 
-        axis.ticks.x = element_blank(), 
-        text = element_text(size = 20), 
-        legend.position = "right",
-        plot.subtitle = element_text(hjust = 0.5) # Center the subtitle
-    )
+iter <- 1
 ```
 
 
 ```{r}
-combined <- wrap_plots(
-plot_density(df, "cell_area", "Cell_Type",pal, "Cell Area",10000),
-plot_density(df, "sum", "Cell_Type",pal, "Counts",10000),
-plot_density(df, "detected", "Cell_Type",pal, "Features",10000),
-gg_piechart,
-ncol = 2)
-```
+sce <- logNormCounts(sce, subset.row = NULL, BPPARAM = bp)
+
+set.seed(101001)
+sce <- fixedPCA(sce,BSPARAM=IrlbaParam())
+
+wh(6,5)
+num_pcs_to_retain <- 20
+percent.var <- attr(reducedDim(sce), "percentVar")
+
+# Create a data frame for ggplot
+data <- data.frame(PC = 1:length(percent.var), Variance = percent.var)
+
+# Plot using ggplot2
+gg_var <- ggplot(data, aes(x = PC, y = Variance)) +
+  geom_point() +
+  scale_y_log10() +
+  xlab("PC") +
+  ylab("Variance explained (%)") +
+  geom_vline(xintercept = num_pcs_to_retain, color = "red") +
+  theme_bw()
+#gg_var
+
+reducedDim(sce, "PCA") <-  reducedDim(sce, "PCA")[,1:num_pcs_to_retain]
+wh(6,5)
+gg_pca <- plotPCA(sce, point_size = 2.5, scattermore = TRUE) + ggtitle("PCA")
+#gg_pca
+
+# Run UMAP
+set.seed(123)
+sce <- runUMAP(sce, dimred="PCA", BPPARAM = bp)
+
+wh(6,5)
+gg_um <- plotReducedDim(sce, "UMAP", point_size = 2.5, scattermore = TRUE) 
+gg_um
+
+wh(12,10)
+combined <- wrap_plots(gg_var, gg_pca, gg_um, ncol = 2, nrow = 2) +
+  plot_annotation(tag_levels = "A") + 
+  plot_annotation(title = glue("Stamp 6 - {sub} + CTCs"), subtitle = glue("N = {comma(ncol(sce))} cells"))
 
 
-```{r}
-pdf(glue("{plt_dir}/stamp_6/Metrics_CTCs5.pdf"), width = 12, height = 8)
+# Build SNN graph
+snn.gr <- buildSNNGraph(sce, type = "jaccard", BNPARAM=AnnoyParam(), use.dimred="PCA", BPPARAM = bp)
+
+# Run Leiden
+clusters <- igraph::cluster_louvain(snn.gr, resolution = 1)
+
+# Assign labels
+sce$label <- as.character(clusters$membership)
+table(sce$label)
+
+gg_clust <- plotReducedDim(sce, "UMAP", colour_by ="label", point_size = 2.5, text_by = "label", rasterise = F)
+
+combined <- wrap_plots(gg_var, gg_pca, gg_clust, ncol = 2, nrow = 2) +
+  plot_annotation(tag_levels = "A") + 
+  plot_annotation(title = glue("Stamp 6 - {sub} + CTCs - It er: {iter}"), subtitle = glue("N = {comma(ncol(sce))} cells"))
+
+gg_hm <- plotHeatmap(sce, features = intersect(feats, rownames(sce)),
+            order_columns_by = "label", center = T, main = "test")
+
+pdf(glue("{plt_dir}/stamp_6/IterCTC/Iter_{iter}.pdf"), width = 10, height = 10)
 combined
+print(gg_hm)
 dev.off()
 ```
 
 
 ```{r}
-qsave(sce, glue("{res_dir}/ctc_sce.qs"), nthreads = 8)
+feats <- c("AKT1","ANPEP","ARID1A","ATM","BRAF","CDK1","CDK12","CDK2","CDK4","CDK6",
+           "CDKN1A","CDKN1B","CDKN1C","CDKN2A","CDKN2B","CDKN2C","CDKN2D","CENPV","CENPF",
+           "CFC1","CTSD","CTSW","CTSS","GRBB2","GRBB3","GRBB4","GATA2","GATA3","TP53","VEGFA",
+           "CD3E","CD247","CD19","CD79A","CD79B","CD74","NKG7","NCAM1","FCGR3A","CD14","CD8A","CD8B","CD4")
 ```
+
+```{r}
+gg_hm <- plotHeatmap(sce, features = intersect(feats, rownames(sce)),
+            order_columns_by = "label", center = T, main = "test")
+```
+
+
+
+```{r}
+gtable_obj <- gg_hm$gtable
+
+# Extract the grob corresponding to the heatmap matrix
+# You might need to explore which grob corresponds to the heatmap
+# In this case, let's assume it's the second grob (index 2)
+heatmap_grob <- gtable_obj$grobs[[2]]
+```
+
+
+
+
+
+
+

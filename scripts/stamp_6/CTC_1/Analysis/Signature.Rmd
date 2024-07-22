@@ -40,12 +40,44 @@ sce <- qread(glue("{res_dir}/clust_sce.qs"))
 sce
 ```
 
+```{r}
+pcs <- reducedDim(sce, "PCA")
+```
+
+```{r}
+rotation <- attr(pcs, "rotation")
+first_pcs <- rotation[,1:20]
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+hist(sce$sum, 50)
+```
+
 
 
 ```{r}
 feats <- c("AKT1","ANPEP","ARID1A","ATM","BRAF","CDK1","CDK12","CDK2","CDK4","CDK6",
            "CDKN1A","CDKN1B","CDKN1C","CDKN2A","CDKN2B","CDKN2C","CDKN2D","CENPV","CENPF",
            "CFC1","CTSD","CTSW","CTSS","GRBB2","GRBB3","GRBB4","GATA2","GATA3","TP53","VEGFA")
+```
+
+```{r}
+ccycle <- c("CCND1", "CDK1", "CDK12", "CDK2", "CDK4",
+            "CDK6", "CDKN1A", "CDKN1B", "CDKN1C", "CDKN2A", "CDKN2B", 
+            "CDKN2C", "CDKN2D", "CENPF", "CENPV", "ORC6", "RB1", "UBE2C")
 ```
 
 
@@ -55,7 +87,7 @@ length(intersect(feats, rownames(sce)))
 ```
 
 ```{r}
-sign <- data.frame(gene = feats, signature = "Tumor", mor = 1)
+sign <- data.frame(gene = ccycle, signature = "CellCycle", mor = 1)
 ```
 
 
@@ -65,7 +97,7 @@ library(decoupleR)
 
 ```{r}
 ulm_start <- Sys.time()
-res <- decoupleR::run_ulm(
+res <- decoupleR::run_wsum(
     mat = counts(sce),
     network = sign,
     .source = "signature",
@@ -76,32 +108,33 @@ glue::glue("Time to run ulm is {round(difftime(Sys.time(), ulm_start, units = 's
 ```
 
 
-
 ```{r}
-res <- res[res$p_value < 0.05,]
-hist(res$score,100)
+sce$score <- res$score
+sce$score_pval <- res$p_value
 ```
 
 
 ```{r}
-hist(res$p_value)
-```
-
-```{r}
-id <- res$condition[res$score > 5]
-```
-
-
-```{r}
+#sce$score <- res$score
 sce$high_score <- "no"
 sce$high_score[sce$cell_id %in%  res$condition[res$score > 5]] <- "yes"
 ```
 
 
-
 ```{r}
-m
+sce$high_score <- "no"
+sce$high_score[sce$score > 5 & sce$score_pval < 0.05] <- "yes"
 ```
 
+
+```{r}
+df <- as.data.frame(colData(sce))
+wrap_plots(
+plot_density(df,"score", "high_score", palette_general(), 50, "Cell Cycle score"),
+plot_density(df,"sum", "high_score", palette_general(), 50, "Counts"),
+plot_density(df,"detected", "high_score", palette_general(), 50, "Features"),
+plot_density(df,"cell_area", "high_score", palette_general(), 50, "Cell Area"),
+ncol = 2)
+```
 
 

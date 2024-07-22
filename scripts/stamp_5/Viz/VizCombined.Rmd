@@ -236,5 +236,7 @@ dev.off()
 ```
 
 ```{r}
+metadata(sce)[4:9] <- NULL
+qsave(sce, file = glue("{proj_dir}/data/stamp_5/processed/Lvl2/annotated_sce.qs"))
 ```
 
