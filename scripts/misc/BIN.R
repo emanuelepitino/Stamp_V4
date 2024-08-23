@@ -1027,3 +1027,41 @@ create_plots2 <- function(spe, variable, markers, pal) {
 }
 
 ###############################################################################
+
+###############################################################################
+library(ggplot2)
+library(dplyr)
+library(glue)
+library(patchwork)
+
+create_plots3 <- function(spe, variable, markers, pal) {
+  # Plot reduced dimensions
+  gg_um <- plotReducedDim(spe, "UMAP", colour_by = variable, point_size = 1, scattermore = T, rasterise = F) +
+    scale_color_manual(values = pal) +
+    theme(legend.position = "none")
+  
+  # Create a data frame for the bar plots
+  cells <- as.data.frame(table(spe[[variable]])) %>%
+    dplyr::rename(Cluster = Var1) %>%
+    mutate(pct = round(Freq / sum(Freq), 3))
+  
+  # Bar plot 2
+  gg_barplot2 <- ggplot(cells, aes(x = "", y = pct, fill = Cluster)) +
+    geom_bar(stat = "identity") +
+    scale_fill_manual(values = pal) +
+    geom_text(aes(label = paste0(pct * 100, "%")), position = position_stack(vjust = 0.5), size = 3) +
+    theme_minimal() +
+    scale_y_reverse() +
+    coord_flip() +
+    theme(legend.position = "bottom")
+  labs(x = "", y = "Percentage",
+       title = glue("N = {sum(cells$Freq)} cells")) +
+    theme(axis.text.x = element_blank(), text = element_text(size = 20), axis.ticks.x = element_blank(), legend.position = "right")
+  
+  
+  # Combine plots
+  A <- wrap_plots(gg_um, gg_barplot2, ncol = 2) + plot_layout(widths = c(1,2.5)) + plot_annotation(tag_levels = "A")
+
+  return(A)
+}
+###############################################################################

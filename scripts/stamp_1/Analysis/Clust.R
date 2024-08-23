@@ -22,7 +22,7 @@ source(glue("{dir}/scripts/misc/BIN.R"))
 
 # Load data
 res_dir <- paste0(proj_dir, "/data/stamp_1/processed")
-sce <- qread(glue("{res_dir}/proc_sce.qs"))
+sce <- qread(glue("{res_dir}/proc_sce.qs"), nthreads = 8)
 
 sce
 
@@ -32,13 +32,13 @@ sce
 snn.gr <- buildSNNGraph(sce, type = "jaccard", BNPARAM=AnnoyParam(), use.dimred="PCA", BPPARAM = bp)
 
 # Run Leiden
-clusters <- igraph::cluster_louvain(snn.gr, resolution = 0.5)
+clusters <- igraph::cluster_louvain(snn.gr, resolution = 0.8)
 
 # Assign labels
 sce$label <- as.character(clusters$membership)
 table(sce$label)
 
-plotReducedDim(sce, "UMAP", colour_by ="label", point_size = 0.001, text_by = "label", rasterise = F)
+plotReducedDim(sce, "UMAP", colour_by ="label", point_size = 1, text_by = "label", scattermore = T)
 
 # Save
 qsave(sce, glue("{res_dir}/clust_sce.qs"), nthreads = 8)

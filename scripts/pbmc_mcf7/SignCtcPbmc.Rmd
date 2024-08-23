@@ -1,0 +1,115 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+suppressPackageStartupMessages({
+library(SingleCellExperiment)
+library(tidyverse)
+library(dplyr)
+library(here)
+library(scater)
+library(scuttle)
+library(glue)
+library(qs)
+library(parallel)
+library(scran)
+library(BiocParallel)
+library(BiocNeighbors)
+library(BiocSingular)
+library(data.table)
+library(scales)
+})
+```
+
+```{r}
+dir <- glue("{here()}")
+source(glue("{dir}/scripts/misc/paths.R"))
+source(glue("{dir}/scripts/misc/BIN.R"))
+```
+
+```{r}
+res_dir <- paste0(proj_dir, "/data/pbmc_mcf7/")
+sce <- qread(glue("{res_dir}/annotated_pbmc_mcf7_ref.qs"), nthreads = 8)
+```
+
+```{r}
+sce$cline <- as.factor(sce$cline)
+markers <- scoreMarkers(sce, sce$cline, lfc = 0.25, BPPARAM = bp)
+```
+
+
+```{r}
+# Clean markers list
+transform_marker <- function(marker_df, cluster_name) {
+  marker_df <- as.data.frame(marker_df) %>%
+    select(median.logFC.cohen, mean.logFC.cohen) %>%
+    arrange(desc(median.logFC.cohen)) %>%
+    filter(median.logFC.cohen > 0.25) %>%
+    mutate(gene = rownames(.), cluster = as.character(cluster_name))
+  rownames(marker_df) <- NULL
+  return(marker_df)
+}
+
+# Apply the function to each element of the markers list along with their names
+markers <- mapply(transform_marker, markers, names(markers), SIMPLIFY = FALSE)
+
+markers <- bind_rows(markers) %>%
+  arrange(cluster,desc(mean.logFC.cohen), .by_group = TRUE) 
+
+markers$median.logFC.cohen <- round(markers$median.logFC.cohen, 2)
+markers$mean.logFC.cohen <- round(markers$mean.logFC.cohen, 2)
+```
+
+
+```{r}
+top <- markers %>%
+            group_by(cluster) %>%
+            slice_head(n = 20)
+feats <- top$gene
+```
+
+```{r}
+plotDots(sce, features = feats, group = "cline", scale =TRUE, center = TRUE) +
+    coord_flip() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, color = "black", size = 12), 
+          axis.text.y = element_text(color = "black"),
+          text = element_text(size = 20, color = "black")) 
+```
+
+```{r}
+ctc_sign <- markers$gene[markers$cluster == "MCF7"][1:100]
+```
+
+
+```{r}
+qsave(markers, file = glue("{proj_dir}/data/pbmc_mcf7/mcf7_markers.qs"))
+```
+
+
+
+
+
+```{r}
+ens_sign <- feats %>%
+              filter(V2 %in% ctc_sign) 
+ens_sign <- ens_sign$V1
+```
+
+```{r}
+length(intersect(ens_sign, features$V1))
+```
+
+
+
+
+
+
+
+
+
+
+
+

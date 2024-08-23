@@ -31,9 +31,12 @@ source(glue("{dir}/scripts/misc/BIN.R"))
 
 ```{r}
 res_dir <- paste0(proj_dir, "/data/stamp_1/processed")
-sce <- qread(glue("{res_dir}/clust_sce.qs"))
+sce <- qread(glue("{res_dir}/clust_sce.qs"), nthreads = 8)
 ```
 
+```{r}
+sce$label <- factor(sce$label, levels = c(1,2,3,4,5,6,7,8,9))
+```
 
 ```{r}
 pal <- palette_general()
@@ -41,15 +44,8 @@ length(pal) <- length(unique(sce$label))
 names(pal) <- unique(sce$label)
 ```
 
-```{r}
-sce <- addPerCellQCMetrics(sce)
-```
-
-
 ## Clusters analysis
 ```{r}
-gg_clust1 <- create_plots2(sce, "label", intersect(feats_xenium, rownames(sce)), pal)
-
 df <- as.data.frame(colData(sce))
 gg_clust2 <- wrap_plots(
     plot_density(df, "sum", "label", pal, "Counts",500),
@@ -60,43 +56,72 @@ gg_clust2 <- wrap_plots(
 plot_annotation(tag_levels = "A")
 ```
 
+## Differential expression
+```{r}
+sce$label <- as.factor(sce$label)
+markers <- scoreMarkers(sce, sce$label, BPPARAM = bp)
+```
+
+```{r}
+# Clean markers list
+transform_marker <- function(marker_df, cluster_name) {
+  marker_df <- as.data.frame(marker_df) %>%
+    select(median.logFC.detected, self.detected) %>%
+    arrange(desc(self.detected)) %>%
+    #filter(median.logFC.cohen > 0.25) %>%
+    mutate(gene = rownames(.), cluster = as.numeric(cluster_name))
+  rownames(marker_df) <- NULL
+  return(marker_df)
+}
+
+# Apply the function to each element of the markers list along with their names
+markers <- mapply(transform_marker, markers, names(markers), SIMPLIFY = FALSE)
+
+markers <- bind_rows(markers) %>%
+  arrange(cluster,desc(median.logFC.detected), .by_group = TRUE) 
+
+markers$median.logFC.detected <- round(markers$median.logFC.detected, 2)
+```
+
+```{r}
+top <- markers %>%
+            group_by(cluster) %>%
+            slice_head(n = 10)
+feats <- top$gene
+```
+
+
+```{r}
+gg_clust1 <- create_plots2(sce, "label", feats, pal)
+```
+
 ## Annotation
 Here we want to distinguish main lineages such as T/B lymphocytes and Myeloid cells.
 ```{r}
 sce$lvl1[sce$label == "1"] <- "B"
-sce$lvl1[sce$label == "2"] <- "T"
-sce$lvl1[sce$label == "3"] <- "T"
-sce$lvl1[sce$label == "4"] <- "T"
-sce$lvl1[sce$label == "5"] <- "Myeloid"
-sce$lvl1[sce$label == "6"] <- "LowQ"
+sce$lvl1[sce$label %in% c(2,3,4,5,8,9)] <- "T"
+sce$lvl1[sce$label %in% c(6,7)] <- "Myeloid"
 ```
 
 ```{r}
-sce$lvl1 <- factor(sce$lvl1, levels = c("T","B","Myeloid", "LowQ"))
+sce$lvl1 <- factor(sce$lvl1, levels = c("T","B","Myeloid"))
 ```
 
-
-```{r}
-pal_lvl1 <- c(pal_lvl1, "LowQ" = "grey")
-```
-
-```{r}
-feats_cosmx <- feats_cosmx[!feats_cosmx %in% c("CMKLR1", "CD1C")]
-```
 
 ```{r}
 # A
-gg_anno1 <- create_plots2(sce, "lvl1", intersect(feats_cosmx, rownames(sce)), pal_lvl1)
+gg_anno1 <- create_plots2(sce, "lvl1", feats, pal_lvl1)
 
 # B
 df <- as.data.frame(colData(sce))
-gg_anno_2 <- wrap_plots(
+gg_anno2 <- wrap_plots(
     plot_density(df, "sum", "lvl1", pal_lvl1, "Counts",500),
     plot_density(df, "detected", "lvl1", pal_lvl1, "Features",300),
     plot_density(df, "Area.um2", "lvl1", pal_lvl1, "Cell Area",500),
     ncol = 2, nrow = 2) +
 plot_annotation(tag_levels = "A")
 ```
+
 
 ```{r}
 outdir <- glue("{plt_dir}/stamp_1")
@@ -107,7 +132,7 @@ pdf(paste0(outdir,"/lvl1.pdf"), width = 12, height = 8)
 gg_clust1
 gg_clust2
 gg_anno1
-gg_anno_2
+gg_anno2
 dev.off()
 ```
 

@@ -24,28 +24,20 @@ source(glue("{dir}/scripts/misc/BIN.R"))
 sub <- "T"
 res_dir <- paste0(proj_dir, "/data/stamp_1/processed/Lvl2/",sub)
 sce <- qread(glue("{res_dir}/proc_sce.qs"))
-
 sce
-
-#sce <- sce[,1:100000]
 
 # Annoy Algorithm
 # Build SNN graph
 snn.gr <- buildSNNGraph(sce, type = "jaccard", BNPARAM=AnnoyParam(ntrees = 200), use.dimred="PCA", BPPARAM = bp)
 # Run Louvain
-annoy <- igraph::cluster_louvain(snn.gr, resolution = 0.5)
-annoy2 <- igraph::cluster_louvain(snn.gr, resolution = 1)
+annoy <- igraph::cluster_louvain(snn.gr, resolution = 0.3)
+
 # Assign labels
-#sce$leiden <- as.character(leiden)
 sce$label <- as.character(annoy$membership)
-sce$label2 <- as.character(annoy2$membership)
 
 #table(sce$leiden)
 table(sce$label)
 
 plotReducedDim(sce, "UMAP", colour_by = "label", text_by = "label", point_size = 1, raster = F, scattermore = T)
-plotReducedDim(sce, "UMAP", colour_by = "label2", text_by = "label2", point_size = 1, raster = F, scattermore = T)
 # Save
 qsave(sce, glue("{res_dir}/clust_lvl2_sce.qs"))
-
-

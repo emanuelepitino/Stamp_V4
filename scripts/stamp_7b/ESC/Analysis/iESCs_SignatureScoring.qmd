@@ -1,0 +1,178 @@
+---
+title: "iESCs developmental signatures scoring - Stamp 7b"
+subtitle: "Emanuele Pitino"
+date: "`r Sys.Date()`"
+format: 
+  html:
+    theme: superhero
+    smooth-scroll: true
+    code-fold: true
+    self-contained: true
+    toc: true
+    toc_float: 
+      collapsed: false
+      smooth_scroll: true
+editor: source
+editor_options: 
+  chunk_output_type: console
+execute:
+  echo: true
+  fig-width: 16     
+  fig-height: 12 
+---
+
+## Packages
+
+```{r}
+suppressPackageStartupMessages({
+  library(SingleCellExperiment)
+  library(tidyverse)
+  library(dplyr)
+  library(here)
+  library(scater)
+  library(glue)
+  library(qs)
+})
+```
+
+## Data loading
+
+```{r}
+stamp <- "stamp_7b"
+sample <- "iESC"
+dir <- glue("{here()}")
+source(glue("{dir}/scripts/misc/paths.R"))
+source(glue("{dir}/scripts/misc/BIN.R"))
+
+res_dir <- glue("{proj_dir}/data/{stamp}/{sample}")
+sce <- qread(glue("{res_dir}/PreProcNew.qs"), nthreads = 8)
+sce 
+```
+
+## Read and clean signatures file
+
+```{r}
+# Read in the signatures file
+file <- suppressMessages({as.data.frame(readxl::read_xlsx(glue("{dir}/data/stamp_7b/curated_markers/SullivanLab_Gastrulation Marker Genes.xlsx")))})
+
+# Select the first 14 columns
+selected_columns <- file[ , 1:14]
+# Clean the column names: remove slashes, backslashes, parentheses, spaces, convert to lowercase # and
+# reduce multiple underscores to a single one, and remove trailing underscores
+cleaned_column_names <- tolower(
+  gsub("_$", "",           # Remove trailing underscore
+       gsub("__+", "_",    # Reduce multiple underscores to a single one
+            gsub("[-/()\\\\ ]", "_", colnames(selected_columns))  
+       )
+  )
+)
+
+# Create a list where each element is a vector with the same name as the column, without NAs
+signatures <- lapply(selected_columns, function(column) {
+  # Remove NA values and convert to a simple vector
+  return(as.vector(na.omit(column)))
+})
+
+# Name the list elements with the cleaned column names
+names(signatures) <- cleaned_column_names
+```
+
+## Scoring
+
+```{r}
+library(purrr)
+# Calculate and assign signature scores 
+signature_scores <- imap(signatures, ~ {
+  gs <- intersect(rownames(sce), .x)
+  es <- counts(sce[gs, ])
+  log1p(colSums(es))
+})
+colData(sce)[glue("score_{names(signature_scores)}")] <- as.data.frame(signature_scores)
+```
+
+## Visualization
+
+### BoxPlot
+
+```{r}
+# Reshape the data into a long format
+df <- as.data.frame(colData(sce))
+score_names <- grep("^score_", colnames(colData(sce)), value = T)
+df_long <- df %>%
+  pivot_longer(cols = all_of(score_names), names_to = "variable", values_to = "value")
+```
+
+```{r}
+create_boxplot <- function(df_long) {
+  ggplot(df_long, aes(x = sample, y = value, fill = sample, color = sample)) + 
+    geom_boxplot(alpha = 0.3, lwd = 0.6) + 
+    scale_fill_brewer(palette = "Set2") + 
+    scale_color_brewer(palette = "Set2") + 
+    theme_bw() + 
+    scale_y_log10() +
+    theme(text = element_text(size = 10, color = "black"),
+          axis.text = element_text(size = 8, color = "black"),
+          panel.grid = element_blank(),
+          axis.text.x = element_text(angle = 45, hjust = 1)) +
+    facet_wrap(~ variable, scales = "free_y")  # Facet by the variable column
+}
+
+# Create the plot
+create_boxplot(df_long)
+```
+
+### Space
+
+```{r}
+plot_space <- function(data, color_var) {
+  ggplot(df, aes(x = CenterX_global_px, y = CenterY_global_px, color = .data[[color_var]])) + 
+  scale_color_gradientn(colors  = c("gold","navy")) +
+  ggrastr::rasterise(geom_point(size = 0.1, shape = 16), dpi = 600) +
+  theme_bw() + 
+  theme(panel.grid = element_blank(), text = element_text(colour = "black", size = 20), 
+        axis.text = element_text(colour = "black", size = 15)) +
+  labs(title = color_var, x = "x_px", y = "y_px", color = "log1p") + 
+    coord_equal()
+}
+```
+
+```{r}
+#sce <- sce[,sample(colnames(sce),100)] # TO REMOVE
+sce <- sce[, sample(ncol(sce))] # shuffle
+df <- as.data.frame(colData(sce))
+plots <- lapply(score_names, function(col_name) {
+  plot_space(df, col_name)
+})
+
+plots
+```
+
+### UMAP
+
+```{r}
+plot_umap <- function(color_var) {
+
+suppressMessages({ggrastr::rasterise(plotReducedDim(sce,"UMAP",color_by = color_var,point_size = 0.01,
+                                  scattermore = F, rasterise = F) +
+  scale_color_gradientn(colors  = c("gold","navy")) +
+    labs(color = "log1p", title = color_var),
+  dpi = 800)
+})
+}
+```
+
+```{r}
+um_plots <- lapply(score_names, function(col_name) {
+  plot_umap(col_name)
+})
+
+#wrap_plots(um_plots, ncol = 3) + 
+#  plot_layout(axis_titles = "collect")
+um_plots
+```
+
+### SessionInfo
+```{r}
+sessionInfo()
+```
+

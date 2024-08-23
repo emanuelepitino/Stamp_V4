@@ -20,6 +20,7 @@ library(BiocParallel)
 library(BiocNeighbors)
 library(BiocSingular)
 library(data.table)
+library(scales)
 })
 ```
 
@@ -32,12 +33,6 @@ source(glue("{dir}/scripts/misc/BIN.R"))
 ```{r}
 data_dir <- paste0(proj_dir, "/data/stamp_1/processed")
 sce <- qread(glue("{data_dir}/lvl1_sce.qs"))
-```
-
-```{r}
-dec.var_x <- qread(glue("{proj_dir}/data/stamp_5/processed/Lvl2/T/dec_var.qs"))
-hvg <- getTopHVGs(dec.var_x,fdr.threshold =  0.9)
-length(hvg)
 ```
 
 
@@ -65,11 +60,6 @@ length(hvg)
 ```
 
 ```{r}
-hvg <- getTopHVGs(dec.var,prop =  0.9)
-length(hvg)
-```
-
-```{r}
 dec.var$hvg <- "no"
 dec.var$hvg[rownames(dec.var) %in% hvg] <- "yes"
 table(dec.var$hvg)
@@ -90,13 +80,13 @@ gg_hvg
 
 ```{r}
 set.seed(101001)
-sce <- fixedPCA(sce, subset.row = intersect(hvg, rownames(sce)),BSPARAM=IrlbaParam())
+sce <- fixedPCA(sce, subset.row = hvg, BSPARAM=IrlbaParam())
 ```
 
 
 ```{r}
 wh(6,5)
-num_pcs_to_retain <- 50
+num_pcs_to_retain <- 5
 percent.var <- attr(reducedDim(sce), "percentVar")
 
 data <- data.frame(PC = 1:length(percent.var), Variance = percent.var)
@@ -104,7 +94,6 @@ data <- data.frame(PC = 1:length(percent.var), Variance = percent.var)
 # Plot using ggplot2
 gg_var <- ggplot(data, aes(x = PC, y = Variance)) +
   geom_point() +
-  scale_y_log10() +
   xlab("PC") +
   ylab("Variance explained (%)") +
   geom_vline(xintercept = num_pcs_to_retain, color = "red") +
@@ -130,7 +119,7 @@ sce <- runUMAP(sce, dimred="PCA", BPPARAM = bp)
 
 ```{r}
 wh(6,5)
-gg_um <- plotReducedDim(sce, "UMAP", scattermore = TRUE) 
+gg_um <- plotReducedDim(sce, "UMAP", scattermore = TRUE)
 gg_um
 ```
 
@@ -139,7 +128,7 @@ wh(12,10)
 library(scales)
 combined <- wrap_plots(gg_hvg, gg_var, gg_pca, gg_um, ncol = 2, nrow = 2) +
   plot_annotation(tag_levels = "A") + 
-  plot_annotation(title = glue("Stamp 5 - {sub}"), subtitle = glue("N = {comma(ncol(sce))} cells"))
+  plot_annotation(title = glue("Stamp 1 - {sub}"), subtitle = glue("N = {number(ncol(sce),big.mark = '.')} cells"))
 ```
 
 ```{r}

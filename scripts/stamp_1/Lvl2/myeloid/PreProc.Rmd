@@ -20,6 +20,7 @@ library(BiocParallel)
 library(BiocNeighbors)
 library(BiocSingular)
 library(data.table)
+library(scales)
 })
 ```
 
@@ -30,7 +31,7 @@ source(glue("{dir}/scripts/misc/BIN.R"))
 ```
 
 ```{r}
-data_dir <- paste0(proj_dir, "/data/stamp_5/processed")
+data_dir <- paste0(proj_dir, "/data/stamp_1/processed")
 sce <- qread(glue("{data_dir}/lvl1_sce.qs"))
 ```
 
@@ -54,7 +55,7 @@ sce <- logNormCounts(sce, BPPARAM = bp)
 # Model Gene Variances
 ```{r}
 dec.var <- modelGeneVar(sce, BPPARAM = bp)
-hvg <- getTopHVGs(dec.var,fdr.threshold =  0.9)
+hvg <- getTopHVGs(dec.var,fdr.threshold =  0.7)
 length(hvg)
 ```
 
@@ -79,13 +80,13 @@ gg_hvg
 
 ```{r}
 set.seed(101001)
-sce <- fixedPCA(sce, subset.row = hvg,BSPARAM=IrlbaParam())
+sce <- fixedPCA(sce, subset.row = hvg, BSPARAM=IrlbaParam())
 ```
 
 
 ```{r}
 wh(6,5)
-num_pcs_to_retain <- 20
+num_pcs_to_retain <- 10
 percent.var <- attr(reducedDim(sce), "percentVar")
 
 data <- data.frame(PC = 1:length(percent.var), Variance = percent.var)
@@ -93,7 +94,6 @@ data <- data.frame(PC = 1:length(percent.var), Variance = percent.var)
 # Plot using ggplot2
 gg_var <- ggplot(data, aes(x = PC, y = Variance)) +
   geom_point() +
-  scale_y_log10() +
   xlab("PC") +
   ylab("Variance explained (%)") +
   geom_vline(xintercept = num_pcs_to_retain, color = "red") +
@@ -119,7 +119,7 @@ sce <- runUMAP(sce, dimred="PCA", BPPARAM = bp)
 
 ```{r}
 wh(6,5)
-gg_um <- plotReducedDim(sce, "UMAP", scattermore = TRUE) 
+gg_um <- plotReducedDim(sce, "UMAP", scattermore = TRUE)
 gg_um
 ```
 
@@ -128,13 +128,13 @@ wh(12,10)
 library(scales)
 combined <- wrap_plots(gg_hvg, gg_var, gg_pca, gg_um, ncol = 2, nrow = 2) +
   plot_annotation(tag_levels = "A") + 
-  plot_annotation(title = glue("Stamp 5 - {sub}"), subtitle = glue("N = {comma(ncol(sce))} cells"))
+  plot_annotation(title = glue("Stamp 1 - {sub}"), subtitle = glue("N = {number(ncol(sce),big.mark = '.')} cells"))
 ```
 
 ```{r}
-pdf_dir <- glue("{plt_dir}/stamp_5/Lvl2/{sub}")
-if (!dir.exists(pdf_dir)) dir.create(pdf_dir, recursive = T)
-pdf(glue("{pdf_dir}/PreProc.pdf"), width = 16, height = 12)
+plot_dir <- glue("{plt_dir}/stamp_1/Lvl2/{sub}")
+if (!dir.exists(plot_dir)) dir.create(plot_dir, recursive = T)
+pdf(glue("{plot_dir}/PreProc.pdf"), width = 16, height = 12)
 combined
 dev.off()
 ```
@@ -142,7 +142,7 @@ dev.off()
 
 ## Save
 ```{r}
-res_dir <- paste0(proj_dir, "/data/stamp_5/processed/Lvl2/",sub)
+res_dir <- paste0(proj_dir, "/data/stamp_1/processed/Lvl2/",sub)
 if (!dir.exists(res_dir)) dir.create(res_dir, recursive = T)
 
 qsave(sce, glue("{res_dir}/proc_sce.qs"))

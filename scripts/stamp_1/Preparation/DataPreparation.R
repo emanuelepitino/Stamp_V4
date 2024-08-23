@@ -24,7 +24,7 @@ source(glue("{dir}/misc/paths.R"))
 source(glue("{dir}/misc/BIN.R"))
 
 # load data
-myflatfiledir <- glue("{proj_dir}/data/stamp_1/raw")
+myflatfiledir <- glue("{proj_dir}/data/stamp_1/raw/PBMCs")
 
 
 # Process flatfiles
@@ -120,10 +120,6 @@ for(i in 1:length(slidenames)){
   }
   
 }
-#> Loading slide MAR19_SlideAge_SkinCancer_4C_CP_slide4, 1/2.
-#>   |                                                                              |                                                                      |   0%  |                                                                              |===================================                                   |  50%  |                                                                              |======================================================================| 100%
-#> Loading slide MAR19_SlideAge_SkinCancer_RT_CP_slide2, 2/2.
-#>   |                                                                              |                                                                      |   0%  |                                                                              |===================================                                   |  50%  |                                                                              |======================================================================| 100%
 
 # reduce to shared metadata columns and shared genes
 for(i in 1:length(slidenames)){
@@ -155,10 +151,11 @@ atomxdata <- list(counts = counts,
                   falsecounts = falsecounts)
 str(atomxdata)
 
-outdir <- paste0(myflatfiledir,"/raw_proc")
+outdir <- paste0(myflatfiledir,"/../raw_proc")
 if(!dir.exists(paste0(outdir))){
   dir.create(outdir)
 }
+
 qsave(atomxdata$counts, file = paste0(outdir, "/counts_unfiltered.qs"))
 qsave(atomxdata$negcounts, file = paste0(outdir, "/negcounts_unfiltered.qs"))
 qsave(atomxdata$falsecounts, file = paste0(outdir, "/falsecounts_unfiltered.qs"))

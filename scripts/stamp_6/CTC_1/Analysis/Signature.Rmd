@@ -36,105 +36,120 @@ res_dir <- paste0(proj_dir, "/data/stamp_6/CTC_1/processed")
 sce <- qread(glue("{res_dir}/clust_sce.qs"))
 ```
 
-```{r} 
-sce
-```
 
 ```{r}
-pcs <- reducedDim(sce, "PCA")
-```
-
-```{r}
-rotation <- attr(pcs, "rotation")
-first_pcs <- rotation[,1:20]
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-```{r}
-hist(sce$sum, 50)
-```
-
-
-
-```{r}
-feats <- c("AKT1","ANPEP","ARID1A","ATM","BRAF","CDK1","CDK12","CDK2","CDK4","CDK6",
-           "CDKN1A","CDKN1B","CDKN1C","CDKN2A","CDKN2B","CDKN2C","CDKN2D","CENPV","CENPF",
-           "CFC1","CTSD","CTSW","CTSS","GRBB2","GRBB3","GRBB4","GATA2","GATA3","TP53","VEGFA")
-```
-
-```{r}
-ccycle <- c("CCND1", "CDK1", "CDK12", "CDK2", "CDK4",
-            "CDK6", "CDKN1A", "CDKN1B", "CDKN1C", "CDKN2A", "CDKN2B", 
-            "CDKN2C", "CDKN2D", "CENPF", "CENPV", "ORC6", "RB1", "UBE2C")
+markers <- qread(file = glue("{proj_dir}/data/pbmc_mcf7/mcf7_markers.qs"))
 ```
 
 
 ```{r}
-length(feats)
-length(intersect(feats, rownames(sce)))
-```
+flex_feat <- fread("/Users/emanuelepitino/Downloads/features.tsv.gz", sep = "\t", header = F)
 
-```{r}
-sign <- data.frame(gene = ccycle, signature = "CellCycle", mor = 1)
+data_dir <- glue("{proj_dir}/data/stamp_6/CTC_1/raw")
+xenium_feat <- fread(glue("{data_dir}/cell_feature_matrix/features.tsv.gz"), sep = "\t", nThread = 3, header = F)
 ```
 
 
 ```{r}
+feats <- markers$gene[markers$mean.logFC.cohen > 5]
+```
+
+```{r}
+mcf7 <- markers[markers$cluster == "MCF7",]
+feats <- mcf7$gene[1:200]
+```
+
+```{r}
+ens_sign <- flex_feat %>%
+              filter(V2 %in% feats) 
+ens_sign <- ens_sign$V1
+```
+
+```{r}
+inters <- intersect(ens_sign, xenium_feat$V1)
+```
+
+
+```{r}
+mcf7_sign <- xenium_feat$V2[xenium_feat$V1 %in% inters]
+```
+
+
+```{r}
+sign <- data.frame(gene = mcf7_sign, signature = "MCF7", mor = 1)
 library(decoupleR)
-```
 
-```{r}
 ulm_start <- Sys.time()
 res <- decoupleR::run_wsum(
     mat = counts(sce),
     network = sign,
     .source = "signature",
     .target = "gene",
+    times = 20,
     .mor = "mor")
 
 glue::glue("Time to run ulm is {round(difftime(Sys.time(), ulm_start, units = 's'), 0)} seconds")
 ```
 
+```{r}
+res$cell_id <- res$condition
+```
 
 ```{r}
+sce$score <- NA
+sce$score[sce$cell_id %in% res$cell_id] <- res$score[match(sce$cell_id, res$cell_id)]
+```
+
+```{r}
+df <- as.data.frame(colData(sce))
+
+ggplot(df, aes(x = cell_area, y = score, color = sum)) + 
+  geom_point(size = 0.01) +
+  geom_vline(xintercept = 100, color = "red", linetype = "dashed" ) 
+  #geom_hline(yintercept = 1, color = "red", linetype = "dashed")
+```
+
+
+```{r}
+sce$inspect <- "no"
+sce$inspect[sce$cell_area > 100 & sce$score > 1 & sce$sum > median(sce$sum)] <- "yes"
+```
+
+```{r}
+sce$ctc <- res$score > 2
 sce$score <- res$score
-sce$score_pval <- res$p_value
 ```
 
-
 ```{r}
-#sce$score <- res$score
-sce$high_score <- "no"
-sce$high_score[sce$cell_id %in%  res$condition[res$score > 5]] <- "yes"
-```
 
-
-```{r}
-sce$high_score <- "no"
-sce$high_score[sce$score > 5 & sce$score_pval < 0.05] <- "yes"
 ```
 
 
 ```{r}
 df <- as.data.frame(colData(sce))
 wrap_plots(
-plot_density(df,"score", "high_score", palette_general(), 50, "Cell Cycle score"),
-plot_density(df,"sum", "high_score", palette_general(), 50, "Counts"),
-plot_density(df,"detected", "high_score", palette_general(), 50, "Features"),
-plot_density(df,"cell_area", "high_score", palette_general(), 50, "Cell Area"),
-ncol = 2)
+plot_density(df,"score", "inspect", palette_general(), 50, "MCF7 score"),
+plot_density(df,"cell_area", "inspect", palette_general(), 50, "MCF7 score"),
+plot_density(df,"sum", "inspect", palette_general(), 50, "MCF7 score"),
+nrow = 2)
 ```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 

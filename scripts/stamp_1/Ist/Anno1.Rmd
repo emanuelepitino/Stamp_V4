@@ -1,0 +1,194 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+```{r}
+suppressPackageStartupMessages({
+library(SingleCellExperiment)
+library(tidyverse)
+library(dplyr)
+library(here)
+library(scater)
+library(scuttle)
+library(glue)
+library(qs)
+library(parallel)
+library(scran)
+library(BiocParallel)
+library(BiocNeighbors)
+library(BiocSingular)
+library(data.table)
+library(InSituType)
+library(ROGUE)
+})
+```
+
+```{r}
+dir <- glue("{here()}")
+source(glue("{dir}/scripts/misc/paths.R"))
+source(glue("{dir}/scripts/misc/BIN.R"))
+```
+
+
+```{r}
+res_dir <- paste0(proj_dir, "/data/stamp_1/processed")
+sce <- qread(glue("{res_dir}/proc_sce.qs"), nthreads = 8)
+unsup <- qread(glue("{res_dir}/Ist/unsup.qs"))
+```
+
+```{r}
+sce$clust <- unsup$clust
+sce$prob <- unsup$prob
+sce$clust[sce$prob < 0.8] <- "Unassigned"
+```
+
+
+```{r}
+pal <- palette_general()
+length(pal) <- length(unique(sce$clust))
+names(pal) <- unique(sce$clust)
+```
+
+## Differential expression
+```{r}
+sce <- logNormCounts(sce, BPPARAM = bp)
+sce$clust <- as.factor(sce$clust)
+markers <- scoreMarkers(sce, sce$clust, BPPARAM = bp)
+```
+
+```{r}
+# Clean markers list
+transform_marker <- function(marker_df, cluster_name) {
+  marker_df <- as.data.frame(marker_df) %>%
+    select(median.logFC.detected, self.detected) %>%
+    arrange(desc(self.detected)) %>%
+    #filter(median.logFC.cohen > 0.25) %>%
+    mutate(gene = rownames(.), cluster = as.character(cluster_name))
+  rownames(marker_df) <- NULL
+  return(marker_df)
+}
+
+# Apply the function to each element of the markers list along with their names
+markers <- mapply(transform_marker, markers, names(markers), SIMPLIFY = FALSE)
+
+markers <- bind_rows(markers) %>%
+  arrange(cluster,desc(median.logFC.detected), .by_group = TRUE) 
+
+markers$median.logFC.detected <- round(markers$median.logFC.detected, 2)
+```
+
+```{r}
+top <- markers %>%
+            group_by(cluster) %>%
+            slice_head(n = 10)
+feats <- top$gene
+```
+
+```{r}
+pal <- palette_general()
+names(pal) <- unique(sce$clust)
+```
+
+```{r}
+gg_combined <- create_plots2(sce, "clust", feats, pal)
+```
+
+```{r}
+df <- as.data.frame(colData(sce))
+wrap_plots(
+plot_density(df, "sum", "clust", pal, "nCounts",500),
+plot_density(df, "detected", "clust", pal, "nFeatures",300),
+plot_density(df, "Area.um2", "clust", pal, "Area",500),
+ncol =2)
+```
+
+```{r}
+sce$label[sce$clust == "Unassigned"] <- "Unassigned"
+sce$label[sce$clust == "e"] <- "T"
+sce$label[sce$clust %in% c("a","d")] <- "B"
+sce$label[sce$clust == "d"] <- "Myeloid"
+sce$label[sce$clust == "b"] <- "Myeloid"
+sce$label[sce$clust == "a"] <- "Myeloid"
+```
+
+```{r}
+colnames(unsup$profiles) <- c("Myeloid","Myeloid","B","Myeloid","T")
+```
+
+```{r}
+ heatmap(sweep(unsup$profiles, 1, pmax(apply(unsup$profiles, 1, max), .2), "/"), scale = "none",
+        main = "Cluster mean expression profiles")
+```
+
+
+## Differential expression
+```{r}
+sce$label <- as.factor(sce$label)
+markers <- scoreMarkers(sce, sce$label, BPPARAM = bp)
+```
+
+```{r}
+# Clean markers list
+transform_marker <- function(marker_df, cluster_name) {
+  marker_df <- as.data.frame(marker_df) %>%
+    select(median.logFC.detected, self.detected) %>%
+    arrange(desc(self.detected)) %>%
+    #filter(median.logFC.cohen > 0.25) %>%
+    mutate(gene = rownames(.), cluster = as.character(cluster_name))
+  rownames(marker_df) <- NULL
+  return(marker_df)
+}
+
+# Apply the function to each element of the markers list along with their names
+markers <- mapply(transform_marker, markers, names(markers), SIMPLIFY = FALSE)
+
+markers <- bind_rows(markers) %>%
+  arrange(cluster,desc(median.logFC.detected), .by_group = TRUE) 
+
+markers$median.logFC.detected <- round(markers$median.logFC.detected, 2)
+```
+
+```{r}
+top <- markers %>%
+            group_by(cluster) %>%
+            slice_head(n = 10)
+feats <- top$gene
+```
+
+```{r}
+pal <- palette_general()
+names(pal) <- unique(sce$label)
+```
+
+```{r}
+gg_combined <- create_plots2(sce, "label", feats, pal)
+```
+
+```{r}
+df <- as.data.frame(colData(sce))
+gg_density <- wrap_plots(
+                plot_density(df, "sum", "label", pal, "nCounts",500),
+                plot_density(df, "detected", "label", pal, "nFeatures",500),
+                plot_density(df, "Area.um2", "label", pal, "Area",500),
+                ncol =2)
+```
+
+
+```{r}
+pdf(glue("{plt_dir}/stamp_1/Ist/Lvl1.pdf"), width = 10, height = 6)
+gg_combined
+gg_density
+dev.off()
+```
+
+
+```{r}
+sce$lvl1 <- sce$label
+qsave(sce, glue("{res_dir}/sce_ist1.qs"), nthreads = 8)
+```
+
+
+
+
+

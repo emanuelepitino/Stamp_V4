@@ -1,0 +1,135 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+```{r}
+suppressPackageStartupMessages({
+library(SingleCellExperiment)
+library(tidyverse)
+library(dplyr)
+library(here)
+library(scater)
+library(scuttle)
+library(glue)
+library(qs)
+library(parallel)
+library(scran)
+library(BiocParallel)
+library(BiocNeighbors)
+library(BiocSingular)
+library(data.table)
+library(InSituType)
+library(ROGUE)
+})
+```
+
+```{r}
+dir <- glue("{here()}")
+source(glue("{dir}/scripts/misc/paths.R"))
+source(glue("{dir}/scripts/misc/BIN.R"))
+```
+
+
+```{r}
+res_dir <- paste0(proj_dir, "/data/stamp_1/processed")
+sce <- qread(glue("{res_dir}/proc_sce.qs"), nthreads = 8)
+```
+
+# Feature selection
+# Entropy
+```{r}
+sub <- sce[,sample(colnames(sce),300000)]
+counts <- counts(sub)
+```
+
+```{r}
+ent.res <- SE_fun(counts)
+SEplot(ent.res)
+```
+
+```{r}
+feat <- ent.res$Gene[1:300]
+```
+
+```{r}
+sce <- sce[feat,]
+#sce <- sce[,sample(colnames(sce),10000)]
+sce
+```
+
+```{r}
+counts <- t(counts(sce))
+neg <- metadata(sce)$negcounts[rownames(counts),]
+negmean <- Matrix::rowMeans(neg)
+```
+
+
+```{r}
+unsup <- insitutype(
+  x = counts,
+  neg = negmean,
+  bg = NULL,
+  n_clusts = c(3:18),
+  # NULL value runs unsupervised clustering; entering a matrix here would run
+  # semi-supervised clustering.
+  reference_profiles = NULL,
+)
+```
+
+
+```{r}
+hm <- heatmap(sweep(unsup$profiles, 1, pmax(apply(unsup$profiles, 1, max), .2), "/"), scale = "none",
+        main = "Cluster mean expression profiles")
+```
+
+
+```{r}
+# define colors:
+cols <- palette_general()
+#cols <- cols[seq_along(unique(unsup$clust))]
+names(cols) <- unique(unsup$clust)
+
+
+# make the flightpath plot
+fp <- flightpath_plot(flightpath_result = NULL, insitutype_result = unsup, col = cols[unsup$clust])
+class(fp)
+print(fp)
+```
+
+```{r}
+cols <- cols[seq_along(unique(newclusts$clust))]
+names(cols) <- unique(newclusts$clust)
+
+# make the flightpath plot
+fp <- flightpath_plot(flightpath_result = NULL, insitutype_result = newclusts, col = cols[newclusts$clust])
+class(fp)
+print(fp)
+```
+
+
+```{r}
+plot_dir <- glue("{plt_dir}/stamp_1/Ist")
+if (!dir.exists(plot_dir)) {
+  dir.create(plot_dir, recursive = TRUE)
+}
+
+pdf(glue("{plot_dir}/Unsup.pdf"))
+heatmap(sweep(unsup$profiles, 1, pmax(apply(unsup$profiles, 1, max), .2), "/"), scale = "none",
+        main = "Cluster mean expression profiles")
+fp
+dev.off()
+```
+
+```{r}
+dir <- glue("{proj_dir}/data/stamp_1/processed/Ist")
+if (!dir.exists(dir)) {
+  dir.create(dir, recursive = TRUE)
+}
+
+qsave(unsup, file = glue("{dir}/unsup.qs"))
+```
+
+
+
+

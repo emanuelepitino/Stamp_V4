@@ -20,6 +20,7 @@ suppressPackageStartupMessages({
   library(patchwork)
   library(qs)
   library(data.table)
+  library(scales)
 })
 ```
 
@@ -28,14 +29,12 @@ dir <- glue("{here()}/scripts")
 # Parameters and paths
 source(glue("{dir}/misc/paths.R"))
 source(glue("{dir}/misc/BIN.R"))
-data_dir <- glue("{proj_dir}/data/stamp_5/raw/raw_proc")
-
+data_dir <- glue("{proj_dir}/data/stamp_1/raw/raw_proc")
 ```
 
 
 ```{r}
-res_dir <- paste0(proj_dir, "/data/stamp_5/processed")
-sce <- HDF5Array::loadHDF5SummarizedExperiment(dir =  glue("{res_dir}/raw_sce"))
+sce <- qread(glue("{data_dir}/raw_sce.qs"))
 ```
 
 ```{r}
@@ -43,236 +42,269 @@ sce <- addPerCellQCMetrics(sce)
 sce
 ```
 
-# QC thresholds
+# Find Outliers
 ```{r}
-feat_lthr <- 5
-tcount_lthr <- 5
+# Sum outliers
+discard_sum <- isOutlier(sce$sum, 
+                         type = "both", 
+                         log = TRUE,
+                         nmads = 2.5)
+# Detected outliers
+discard_detected <- isOutlier(sce$detected, 
+                         type = "both", 
+                         log = TRUE,
+                         nmads = 2.5)
+# Detected outliers
+discard_area <- isOutlier(sce$Area.um2, 
+                         type = "both", 
+                         log = TRUE,
+                         nmads = 2.5)
+```
 
-cccounts_hthr <- 1
-cpcounts_hthr <- 1
-
-
-carea_lthr <- 10
-carea_hthr <- 80
-
-narea_lthr <- 10
-narea_hthr <- 80
+```{r}
+table(discard_sum)
+table(discard_detected)
+table(discard_area)
 ```
 
 
 ```{r}
-discard_carea <-  sum(sce$cell_area < carea_lthr | sce$cell_area > carea_hthr)
-discard_narea <-  sum(sce$nucleus_area < narea_lthr | sce$cell_area > narea_hthr, na.rm = T)
-
-discard_tcounts <- sum(sce$transcript_counts < tcount_lthr)
-discard_cccounts <- sum(sce$control_codeword_counts > cccounts_hthr)
-discard_cpcounts <- sum(sce$control_probe_counts > cpcounts_hthr) 
-
-discard_carea_id <- unique(sce$cell_id[sce$cell_area < carea_lthr | sce$cell_area > carea_hthr])
-discard_narea_id <- unique(sce$cell_id[sce$nucleus_area < narea_lthr | sce$cell_area > narea_hthr])
-
-discard_tcounts_id <- unique(sce$cell_id[sce$transcript_counts < tcount_lthr])
-discard_cccounts_id <- unique(sce$cell_id[sce$control_codeword_counts > cccounts_hthr])
-discard_cpcounts_id <- unique(sce$cell_id[sce$control_probe_counts > cpcounts_hthr])
-```
-
-
-```{r}
-# Calculate percentage of discard for each filter
-calc_pct <- function(discard) {
-  round(discard / n_distinct(sce$cell_id) * 100, 2)
+extr_thr <- function(df){
+return <- list()
+lower <- round(attr(df, 'thresholds')['lower'],0)
+higher <- round(attr(df, 'thresholds')['higher'],0)
+return(c(lower,higher))
 }
+```
 
-discard_carea_pct <- calc_pct(discard_carea)
-discard_narea_pct <- calc_pct(discard_narea)
-discard_tcounts_pct <- calc_pct(discard_tcounts)
-discard_cccounts_pct <- calc_pct(discard_cccounts)
-discard_cpcounts_pct <- calc_pct(discard_cpcounts)
+```{r}
+gg_hist <- function(df, outliers, var, title) {
+  sum_thr <- extr_thr(outliers)
+  median_val <- round(median(df[[var]]), 2)
+
+  plot <- ggplot(df, aes_string(x = var)) + 
+              geom_histogram(bins = 100)  + 
+              geom_vline(xintercept = sum_thr, linetype = "dashed", color = "red") + 
+              theme(axis.text = element_text(size = 15, color = "black")) + 
+              labs(title = title, 
+                   subtitle = glue::glue("Median: {median_val}; Lower thr: {sum_thr[1]}; Higher thr: {sum_thr[2]}")) + 
+              scale_x_log10()
+  return(plot)
+}
 ```
 
 
 ```{r}
-cellsdata <- colData(sce)
+df <- as.data.frame(colData(sce))
+
+gg_qc_metrics <- wrap_plots(
+                gg_hist(df, discard_sum, "sum", "Counts"),
+                gg_hist(df, discard_detected, "detected", "Features"),
+                gg_hist(df, discard_area, "Area.um2", "Cell Area"),
+                ncol = 3)
 ```
 
-
-## 1. Counts
+# Filter
 ```{r}
-wh(15,5)
-gg_counts <- wrap_plots(
+filt <- sce[,sce$nCount_RNA > as.numeric(attr(discard_sum, "threshold")["lower"]) &
+             sce$nFeature_RNA > as.numeric(attr(discard_detected, "threshold")["lower"]) &
+             sce$Area.um2 > as.numeric(attr(discard_area, "threshold")["lower"]) &
+             sce$Area.um2 < as.numeric(attr(discard_area, "threshold")["higher"])]
+```
 
-# Transcripts
-ggplot(cellsdata, aes(x = transcript_counts)) + 
-  geom_histogram() + 
-  scale_x_log10() +
-  theme(legend.position = "right",
-        axis.text = element_text(size = 15, color = "black")) +
-  geom_vline(xintercept = tcount_lthr, col = "red", lty = 2) +
-  labs(title = glue("Median Transcript counts: {median(cellsdata$transcript_counts)}"), x = "transcript_counts", y = "nCells",
-       subtitle = glue("Discard: {discard_tcounts} / {discard_tcounts_pct}%")) +
-  theme_minimal(),
+```{r}
+gg_qc_metrics <- gg_qc_metrics +
+                    plot_annotation(title = "Quality control - Stamp1",
+                                    subtitle = glue("Before filtering: {number(ncol(sce), big.mark = '.')} C; After filtering: {number(ncol(filt), big.mark = '.')} C")) 
+```
 
-# Control Probes
+# Border effect
+```{r}
+sce <- filt
+md <- as.data.frame(colData(sce))
+```
 
-ggplot(cellsdata, aes(x = control_probe_counts)) + 
-  geom_histogram() + 
-  theme(legend.position = "right",
-        axis.text = element_text(size = 15, color = "black")) +
-  geom_vline(xintercept = cpcounts_hthr, col = "red", lty = 2) +
-  labs(title = glue("Median ControlProbeCounts: {median(cellsdata$control_probe_counts)}"), x = "control_probe_counts", y = "nCells",
-       subtitle = glue("Discard: {discard_cpcounts} / {discard_cpcounts_pct}%")) +
-  theme_minimal(),
+```{r}
+right <- md %>%
+        group_by(fov) %>%
+        mutate(d_border_px = max(CenterX_local_px) - CenterX_local_px) %>% 
+        filter(d_border_px < 300) %>%
+        ungroup() %>%
+        mutate(fov_cell = paste0(fov, "_", cell_id))
 
-# Control Codewords
-ggplot(cellsdata, aes(x = control_codeword_counts)) + 
-  geom_histogram() + 
-  theme(legend.position = "right",
-        axis.text = element_text(size = 15, color = "black")) +
-  geom_vline(xintercept = 0.9, col = "red", lty = 2) +
-  labs(title = glue("Median ControlCodewordsCounts: {median(cellsdata$control_codeword_counts)}"), x = "control_codeword_counts", y = "nCells",
-       subtitle = glue("Discard: {discard_cccounts} / {discard_cccounts_pct}%")) +
-  theme_minimal(),
+left <- md %>%
+        group_by(fov) %>%
+        mutate(d_border_px = abs(min(CenterX_local_px) - CenterX_local_px)) %>% 
+        filter(d_border_px < 300) %>%
+        ungroup()%>%
+        mutate(fov_cell = paste0(fov, "_", cell_id))
 
-  ncol = 3
-)
+top <- md %>%
+        group_by(fov) %>%
+        mutate(d_border_px = abs(max(CenterY_local_px) - CenterY_local_px)) %>% 
+        filter(d_border_px < 300) %>%
+        ungroup()%>%
+        mutate(fov_cell = paste0(fov, "_", cell_id))
+
+bottom <- md %>%
+        group_by(fov) %>%
+        mutate(d_border_px = abs(min(CenterY_local_px) - CenterY_local_px)) %>% 
+        filter(d_border_px < 300) %>%
+        ungroup()%>%
+        mutate(fov_cell = paste0(fov, "_", cell_id))
+```
+
+```{r}
+plot_d_border <- function(df, title, thr) {
+  # Number of bins
+  num_bins <- 1000
   
-```
-
-## 2. Area
-```{r}
-gg_areas <- wrap_plots(
-
-# Cell area
-ggplot(cellsdata[cellsdata$cell_area < 150,], aes(x = cell_area)) + 
-  geom_histogram() + 
-  theme(legend.position = "right",
-        axis.text = element_text(size = 15, color = "black")) +
-  geom_vline(xintercept = c(carea_lthr,carea_hthr), col = "red", lty = 2) +
-  labs(title = glue("Median Cell Area : {round(median(cellsdata$cell_area),2)}"), x = "cell_area", y = "nCells",
-       subtitle = glue("Discard: {discard_carea} / {discard_carea_pct}%")) +
-  theme_minimal(),
-
-# Nucleus area
-  ggplot(cellsdata[na.omit = T,], aes(x = nucleus_area)) + 
-  geom_histogram() + 
-  theme(legend.position = "right",
-        axis.text = element_text(size = 15, color = "black")) +
-  geom_vline(xintercept = c(narea_lthr,narea_hthr), col = "red", lty = 2) +
-  labs(title = glue("Median Nucleus Area : {round(median(cellsdata$nucleus_area, na.rm = T),2)}"), x = "nucleus_area", y = "nCells",
-       subtitle = glue("Discard: {discard_narea} / {discard_narea_pct}%")) +
-  theme_minimal(),
- 
-ncol = 2)
-```
-
-## 3. Features
-```{r}
-discard_feats <- sum(sce$detected < feat_lthr) 
-
-discard_feats_id <- unique(sce$cell_id[sce$detected < feat_lthr])
-```
-
-```{r}
-df <- colData(sce)
-```
-
-```{r}
-gg_feats <- ggplot(df, aes(x = detected)) + 
-  geom_histogram() + 
-  scale_x_log10() +
-  theme(legend.position = "right",
-        axis.text = element_text(size = 15, color = "black")) +
-  geom_vline(xintercept = feat_lthr, col = "red", lty = 2) +
-  labs(title = glue("Median nFeatures: {median(df$detected)}"), x = "nFeatures", y = "nCells",
-       subtitle = glue("Discard: {discard_feats} ")) +
-  theme_minimal()
-```
-
-```{r}
-gg_b <- wrap_plots(gg_feats, gg_areas, ncol =2) + plot_layout(widths = c(1,2))
-```
-
-
-## Combined plots
-```{r}
-vectors_to_intersect <- list(discard_carea_id, discard_narea_id, discard_tcounts_id, discard_cccounts_id, discard_cpcounts_id, discard_feats_id)
-
-# Intersect all vectors
-common_ids <- Reduce(union, vectors_to_intersect)
-```
-
-### N cells kept/removed
-```{r}
-total_c <- format(n_distinct(cellsdata$cell_id), big.mark = ".", scientific = FALSE)
-removed_c <- format(length(common_ids), big.mark = ".", scientific = FALSE)
-cells_kept <- format(n_distinct(cellsdata$cell_id) - length(common_ids), big.mark = ".", scientific = FALSE)
-pct_removed <- format(round(length(common_ids) / n_distinct(cellsdata$cell_id) * 100, 2), big.mark = ".", scientific = FALSE)
-```
-
-
-```{r}
-sce_filt <- sce[,sce$sum > 0 & sce$detected > 0]
-```
-
-
-```{r}
-ncol(sce) - ncol(sce_filt)
-```
-
-
-```{r}
-# Set theme for all text elements to be black
-theme_set(theme_minimal() +
-  theme(
-    plot.title = element_text(size = 20, color = "black"),
-    plot.subtitle = element_text(color = "black"),
-    axis.text = element_text(color = "black"),
-    axis.title = element_text(color = "black"),
-    legend.text = element_text(color = "black"),
-    legend.title = element_text(color = "black"),
-    strip.text = element_text(color = "black"),
-    plot.tag = element_text(color = "black")
-  )
-)
-
-# Assuming gg_counts and gg_b are your ggplot objects
-wh(15, 10)
-combined_plots <- wrap_plots(gg_counts, gg_b, nrow = 2) + 
-plot_annotation(
-  tag_levels = "A", 
-  title = glue("N cells before QC: {total_c}; Removed Cells: {length(common_ids)} / {pct_removed}%; N cells after QC: {cells_kept}"))
-```
-
-
-```{r}
-sce$low_quality <- "no"
-sce$low_quality[sce$cell_id %in% common_ids] <- "yes"
-```
-
-```{r}
-table(sce$low_quality)
-```
-
-```{r}
-sce_filt <- sce[,sce$low_quality == "no"]
-```
-
-
-```{r}
-outdir <- glue("{plt_dir}/stamp_5")
-if(!dir.exists(paste0(outdir))){
-  dir.create(outdir)
+  # Create bins based on d_border_px
+  bins <- cut(df$d_border_px, breaks = num_bins, labels = FALSE)
+  
+  # Calculate means within each bin
+  bin_means <- aggregate(df$nCount_RNA, by = list(bin = bins), FUN = mean)
+  bin_centers <- aggregate(df$d_border_px, by = list(bin = bins), FUN = mean)
+  
+  # Combine bin means and centers into a single data frame
+  bin_data <- data.frame(bin_centers = bin_centers$x, bin_means = bin_means$x)
+  
+  # Create the plot
+  p <- ggplot(df, aes(x = d_border_px, y = nCount_RNA)) +
+    geom_point(color = "lightblue", size = 0.1) +
+    geom_line(data = bin_data, aes(x = bin_centers, y = bin_means), color = "darkblue") +
+    geom_hline(yintercept = mean(df$nCount_RNA), color = "red") +
+    geom_vline(xintercept = thr, color = "red", linetype = "dashed") +
+    labs(
+      title = title,
+      x = "Distance from FOV border (px)",
+      y = "nCount_RNA"
+    ) +
+    theme_minimal() +
+    theme(text = element_text(color = "black")) +
+    scale_y_continuous(limits = c(100,250))
+  
+  # Return the plot object
+  return(p)
 }
 
-pdf(paste0(outdir,"/QC1.pdf"), width = 15, height = 10)
-combined_plots
+```
+
+```{r}
+wh(20,10)
+par(mfrow = c(2, 2))
+a <-plot_d_border(left[left$d_border_px <100,], "Left", 25)
+b <- plot_d_border(right[right$d_border_px <100,], "Right", 25)
+c <- plot_d_border(bottom[bottom$d_border_px <100,], "Bottom", 25)
+d <- plot_d_border(top[top$d_border_px <100,], "Top", 25)
+```
+
+```{r}
+gg_border_effect <- wrap_plots(a,b,c,d, ncol = 2, nrow = 2) + plot_annotation(title = glue("Border effect on Stamp 1"))
+```
+
+```{r}
+remove_left <- unique(left$fov_cell[left$d_border_px < 25 & left$nCount_RNA < mean(left$nCount_RNA)])
+remove_right <- unique(right$fov_cell[right$d_border_px < 25 & right$nCount_RNA < mean(right$nCount_RNA)])
+remove_bottom <- unique(bottom$fov_cell[bottom$d_border_px < 25 & bottom$nCount_RNA < mean(bottom$nCount_RNA)])
+remove_top <- unique(top$fov_cell[top$d_border_px < 25 & top$nCount_RNA < mean(top$nCount_RNA)])
+remove <- c(remove_top,remove_bottom,remove_left,remove_right)
+```
+
+```{r}
+sce$fov_cell <- paste0(sce$fov, "_", sce$cell_id)
+
+filt <- sce[,!sce$fov_cell %in% remove]
+sce
+filt
+```
+
+
+```{r}
+tbl_unfilt <- as.data.frame(table(sce$fov))
+tbl_filt <- as.data.frame(table(filt$fov))
+
+colnames(tbl_filt)[colnames(tbl_filt) == "Freq"] <- "Freq_2"
+
+tbl_merged <- merge(tbl_unfilt, tbl_filt, by = "Var1", all = TRUE)
+tbl_merged$pct_removed <- round((((tbl_merged$Freq - tbl_merged$Freq_2)/tbl_merged$Freq)*100), 2)
+tbl_merged$pct_kept <- 100- tbl_merged$pct_removed
+```
+
+
+```{r}
+# Create a new column for the difference
+tbl_merged$cells_removed <- tbl_merged$Freq - tbl_merged$Freq_2
+
+# Calculate the total counts for each FOV
+tbl_merged$Total <- tbl_merged$Freq
+
+# Calculate the relative percentages
+tbl_merged$removed_pct <- tbl_merged$cells_removed / tbl_merged$Total * 100
+
+# Order the data frame by FOV
+tbl_merged <- tbl_merged[order(tbl_merged$Var1),]
+
+# Restructure the data for ggplot2
+tbl_long <- tbl_merged %>%
+  select(Var1, cells_removed, Freq_2) %>%
+  pivot_longer(cols = c(cells_removed, Freq_2), names_to = "Category", values_to = "Count")
+
+tbl_long$Category <- factor(tbl_long$Category, levels = c("Freq_2", "cells_removed"))
+# Calculate the median percentage cells removed
+median_removed_pct <- round(median(tbl_merged$removed_pct), 2)
+total_cells_removed <- sum(tbl_merged$cells_removed)
+total_cells_kept <- sum(tbl_merged$Freq_2)
+
+# Create the ggplot
+gg_border_eff_quantification <- ggplot(tbl_long, aes(x = Var1, y = Count, fill = Category)) +
+  geom_bar(stat = "identity", position = "stack") +
+  scale_fill_manual(values = c("grey", "red"), labels = c(glue("Cells Kept (N = {total_cells_kept})"),
+                                                              glue("Cells Removed (N = {total_cells_removed})"))) +
+  labs(
+    x = "FOV", 
+    y = "# Cells", 
+    fill = ""
+  ) +
+  theme(plot.title = element_text(size = 20))  # Increase the title size to 20
+
+# Print the ggplot
+gg_border_eff_quantification <- gg_border_eff_quantification +
+  theme(panel.grid.major = element_blank(), 
+        text = element_text(color = "black"),
+        panel.grid.minor = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "top")
+
+# Print the ggplot
+#print(gg_border_eff_quantification)
+```
+
+```{r}
+wrap_plots(gg_border_effect, gg_border_eff_quantification, nrow = 2) +
+  plot_annotation(title  = "Border effect - Stamp 1",
+    subtitle = paste("Median Cells removed/FOV:", median_removed_pct,"%"),
+    tag_levels = "A")
+```
+
+```{r}
+pdf(glue("{plt_dir}/stamp_1/QC1.pdf"), width = 14, height = 4 )
+gg_qc_metrics
+dev.off()
+```
+
+
+```{r}
+pdf(glue("{plt_dir}/stamp_1/QC2.pdf"), width = 10, height = 8 )
+wrap_plots(gg_border_effect, gg_border_eff_quantification, nrow = 2) +
+  plot_annotation(title  = "Border effect - Stamp 1",
+    subtitle = paste("Median Cells removed/FOV:", median_removed_pct,"%"),
+    tag_levels = "A") +
+  plot_layout(heights = c(2,1))
 dev.off()
 ```
 
 ```{r}
-outdir <- glue("{proj_dir}/data/stamp_1/processed")
-if(!dir.exists(paste0(outdir))){
-  dir.create(outdir)
-}
-HDF5Array::saveHDF5SummarizedExperiment(filt, glue("{outdir}/qc_sce"), replace = T)
+qsave(filt, glue("{proj_dir}/data/stamp_1/processed/qc_sce.qs"))
 ```
+

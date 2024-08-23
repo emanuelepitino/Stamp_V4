@@ -59,23 +59,56 @@ df <- df %>%
 
 
 ```{r}
-ids <- df$cell_id[1:100]
+#ids <- df$cell_id[1:100]
+sce <- sce_full[,sce_full$cell_id %in% df$cell_id[1:100]]
 ```
 
 ```{r}
-sce <- sce_full[,sce_full$cell_id %in% ids]
+feats <- c("AKT1","ANPEP","ARID1A","ATM","BRAF","CDK1","CDK12","CDK2","CDK4","CDK6",
+           "CDKN1A","CDKN1B","CDKN1C","CDKN2A","CDKN2B","CDKN2C","CDKN2D","CENPV","CENPF",
+           "CFC1","CTSD","CTSW","CTSS","GRBB2","GRBB3","GRBB4","GATA2","GATA3","TP53","VEGFA",
+           "CD3E","CD247","CD19","CD79A","CD79B","CD74","NKG7","NCAM1","FCGR3A","CD14","CD8A","CD8B","CD4")
 ```
 
 ```{r}
 iter <- 1
 ```
 
+```{r}
+idx <- c(1:100,101:200,201:300,301:400,401:500,501:600,601:700,
+         701:800,801:900,901:1000)
+```
+
 
 ```{r}
+iter <- 1
+idx_list <- list(
+  1:100, 101:200, 201:300, 301:400, 401:500,
+  501:600, 601:700, 701:800, 801:900, 901:1000
+)
+
+for(i in idx_list){
+
+sce <- sce_full[,sce_full$cell_id %in% df$cell_id[i]]
 sce <- logNormCounts(sce, subset.row = NULL, BPPARAM = bp)
 
+dec.var <- modelGeneVar(sce, BPPARAM = bp)
+hvg <- getTopHVGs(dec.var,fdr.threshold =  0.9)
+length(hvg)
+
+dec.var$hvg <- "no"
+dec.var$hvg[rownames(dec.var) %in% hvg] <- "yes"
+table(dec.var$hvg)
+
+rowData <- rowData(sce)
+dec.var$Symbol <- ""
+dec.var$Symbol[rownames(dec.var) %in% rowData$ID] <- rowData$Symbol
+
+gg_hvg <- plot_hvg(dec.var, sub)
+gg_hvg
+
 set.seed(101001)
-sce <- fixedPCA(sce,BSPARAM=IrlbaParam())
+sce <- fixedPCA(sce, subset.row = hvg,BSPARAM=IrlbaParam())
 
 wh(6,5)
 num_pcs_to_retain <- 20
@@ -125,42 +158,39 @@ table(sce$label)
 
 gg_clust <- plotReducedDim(sce, "UMAP", colour_by ="label", point_size = 2.5, text_by = "label", rasterise = F)
 
-combined <- wrap_plots(gg_var, gg_pca, gg_clust, ncol = 2, nrow = 2) +
+combined <- wrap_plots(gg_var, gg_pca, gg_clust, gg_hvg, ncol = 2, nrow = 2) +
   plot_annotation(tag_levels = "A") + 
   plot_annotation(title = glue("Stamp 6 - {sub} + CTCs - It er: {iter}"), subtitle = glue("N = {comma(ncol(sce))} cells"))
 
 gg_hm <- plotHeatmap(sce, features = intersect(feats, rownames(sce)),
             order_columns_by = "label", center = T, main = "test")
 
+gg_violin <- plotColData(sce, x = "label", y = "cell_area", color_by = "sum") + scale_y_log10()
+
 pdf(glue("{plt_dir}/stamp_6/IterCTC/Iter_{iter}.pdf"), width = 10, height = 10)
-combined
 print(gg_hm)
+print(combined)
+print(gg_violin)
 dev.off()
+
+iter <- iter +1
+}
 ```
 
 
 ```{r}
-feats <- c("AKT1","ANPEP","ARID1A","ATM","BRAF","CDK1","CDK12","CDK2","CDK4","CDK6",
-           "CDKN1A","CDKN1B","CDKN1C","CDKN2A","CDKN2B","CDKN2C","CDKN2D","CENPV","CENPF",
-           "CFC1","CTSD","CTSW","CTSS","GRBB2","GRBB3","GRBB4","GATA2","GATA3","TP53","VEGFA",
-           "CD3E","CD247","CD19","CD79A","CD79B","CD74","NKG7","NCAM1","FCGR3A","CD14","CD8A","CD8B","CD4")
+"TFF1","SPTSSB","AREG","MDK","PSMD6","ACKR3","EEF1A2","USP32","GATA3"
 ```
-
-```{r}
-gg_hm <- plotHeatmap(sce, features = intersect(feats, rownames(sce)),
-            order_columns_by = "label", center = T, main = "test")
-```
-
 
 
 ```{r}
-gtable_obj <- gg_hm$gtable
-
-# Extract the grob corresponding to the heatmap matrix
-# You might need to explore which grob corresponds to the heatmap
-# In this case, let's assume it's the second grob (index 2)
-heatmap_grob <- gtable_obj$grobs[[2]]
+grep("GATA3", rownames(sce), value =T )
 ```
+
+
+
+
+
 
 
 
