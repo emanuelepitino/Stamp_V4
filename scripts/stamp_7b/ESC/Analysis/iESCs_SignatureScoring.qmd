@@ -46,6 +46,7 @@ source(glue("{dir}/scripts/misc/BIN.R"))
 
 res_dir <- glue("{proj_dir}/data/{stamp}/{sample}")
 sce <- qread(glue("{res_dir}/PreProcNew.qs"), nthreads = 8)
+#sce <- sce[,sample(colnames(sce),1000)]
 sce 
 ```
 
@@ -77,17 +78,29 @@ signatures <- lapply(selected_columns, function(column) {
 names(signatures) <- cleaned_column_names
 ```
 
+## Scoring AUCell
+```{r}
+score <- AUCell::AUCell_run(sce, geneSets = signatures, BPPARAM = bp)
+mtx_score <- t(score@assays@data$AUC)
+```
+
+```{r}
+for (colname in colnames(mtx_score)) {
+  colData(sce)[[paste0("score_", colname)]] <- mtx_score[, colname]
+}
+```
+
 ## Scoring
 
 ```{r}
-library(purrr)
+#library(purrr)
 # Calculate and assign signature scores 
-signature_scores <- imap(signatures, ~ {
-  gs <- intersect(rownames(sce), .x)
-  es <- counts(sce[gs, ])
-  log1p(colSums(es))
-})
-colData(sce)[glue("score_{names(signature_scores)}")] <- as.data.frame(signature_scores)
+#signature_scores <- imap(signatures, ~ {
+#  gs <- intersect(rownames(sce), .x)
+#  es <- counts(sce[gs, ])
+#  log1p(colSums(es))
+#})
+#colData(sce)[glue("score_{names(signature_scores)}")] <- as.data.frame(signature_scores)
 ```
 
 ## Visualization

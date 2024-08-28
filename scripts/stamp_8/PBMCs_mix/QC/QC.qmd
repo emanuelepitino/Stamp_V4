@@ -1,0 +1,280 @@
+---
+title: "QC - Stamp9 - PBMCs mixed with MCF7-SKBR3"
+subtitle: "Emanuele Pitino"
+date: "`r Sys.Date()`"
+format: 
+  html:
+    theme: superhero
+    smooth-scroll: true
+    code-fold: true
+    self-contained: true
+    toc: true
+    toc_float: 
+      collapsed: false
+      smooth_scroll: true
+editor: source
+editor_options: 
+  chunk_output_type: console
+execute:
+  echo: true
+---
+
+## Setup
+
+### Libraries
+
+```{r}
+suppressPackageStartupMessages({
+  library(SingleCellExperiment)
+  library(tidyverse)
+  library(dplyr)
+  library(patchwork)
+  library(grid)
+  library(ggpubr)
+  library(here)
+  library(scater)
+  library(scuttle)
+  library(glue)
+  library(scran)
+  library(patchwork)
+  library(qs)
+  library(data.table)
+  library(scales)
+})
+```
+
+```{r}
+dir <- glue("{here()}/scripts")
+# Parameters and paths
+source(glue("{dir}/misc/paths.R"))
+```
+
+```{r}
+suppressMessages({
+sample <- "PBMCs_mix"
+stamp <- "stamp_8"
+
+source(glue("{dir}/misc/BIN.R"))
+data_dir <- glue("{proj_dir}/data/{stamp}/{sample}/processed")
+})
+```
+
+### Data loading
+
+```{r}
+sce <- qread(glue("{data_dir}/raw_sce.qs"), nthreads = 8)
+#sce <- sce[,sample(colnames(sce),50000)]
+sce
+```
+
+### Rotate the slide by 2 degrees
+
+```{r}
+# Rotate the slide by 2 degrees
+df <- as.data.frame(colData(sce))
+angle_rad <- -2 * pi / 180
+rotation_matrix <- matrix(c(cos(angle_rad), -sin(angle_rad), 
+                            sin(angle_rad), cos(angle_rad)), 
+                          nrow = 2)
+coords <- as.matrix(df[, c("x_centroid", "y_centroid")])
+rotated_coords <- coords %*% t(rotation_matrix)
+sce$x_centroid <- rotated_coords[, 1]
+sce$y_centroid <- rotated_coords[, 2]
+```
+
+## Add per cell QC metrics
+
+```{r}
+sce <- addPerCellQCMetrics(sce)
+```
+
+## Removing cells at the border of the mask
+
+```{r}
+xmin <- 190
+xmax <- 7600
+ymin <- 680
+ymax <- 12300
+filt <- sce[, sce$x_centroid > xmin & sce$x_centroid < xmax &
+             sce$y_centroid > ymin & sce$y_centroid < ymax]
+```
+
+```{r, fig.width=16, fig.height=12}
+suppressWarnings({
+df <- as.data.frame(colData(sce))
+
+plot_metrics <- function(data, color_var) {
+  ggplot(df, aes(x = x_centroid, y = y_centroid, color = .data[[color_var]])) + 
+  ggrastr::rasterise(geom_point(size = 0.1, shape = 16), dpi = 600) +
+    scale_color_gradientn(colors  = c("gold","navy")) +
+    geom_vline(xintercept = xmax, color = "red", linetype = "dashed") +
+    geom_vline(xintercept = xmin, color = "red", linetype = "dashed") +
+    geom_hline(yintercept = ymin, color = "red", linetype = "dashed") +
+    geom_hline(yintercept = ymax, color = "red", linetype = "dashed") +
+  theme_bw() + 
+  theme(panel.grid = element_blank(), text = element_text(colour = "black", size = 20), 
+        axis.text = element_text(colour = "black", size = 15)) +
+  coord_equal()
+} 
+
+# Plot for nCount_RNA
+gg_spat_counts <- plot_metrics(df, "sum")
+# Plot for nFeature_RNA
+gg_spat_feat <- plot_metrics(df, "detected")
+
+gg_spat_metrics <- wrap_plots(gg_spat_counts,gg_spat_feat, ncol = 2) + 
+  plot_annotation(title = glue("{stamp} - {sample}"), tag_levels = "A",theme = theme(plot.title = element_text(size = 30)),  subtitle = glue("Before filtering: {number(ncol(sce), big.mark = '.')} C; After filtering: {number(ncol(filt), big.mark = '.')} C"))
+
+gg_spat_metrics
+
+})
+```
+
+## Find Outliers
+
+Not filtering out higher area outliers as we are looking for CTCs
+
+```{r}
+sce <- filt
+# Sum outliers
+discard_sum <- isOutlier(sce$sum, 
+                         type = "both", 
+                         log = TRUE,
+                         nmads = 2.5)
+# Detected outliers
+discard_detected <- isOutlier(sce$detected, 
+                         type = "both", 
+                         log = TRUE,
+                         nmads = 2.5)
+# Detected outliers
+discard_area <- isOutlier(sce$cell_area, 
+                         type = "lower", 
+                         log = TRUE,
+                         nmads = 2.5)
+```
+
+```{r}
+table(discard_sum)
+table(discard_detected)
+table(discard_area)
+```
+
+```{r}
+# Function to extract thresholds
+extr_thr <- function(df){
+return <- list()
+lower <- round(attr(df, 'thresholds')['lower'],0)
+higher <- round(attr(df, 'thresholds')['higher'],0)
+return(c(lower,higher))
+}
+
+# Histogram  QC metrics plot
+gg_hist <- function(df, outliers, var, title) {
+  sum_thr <- extr_thr(outliers)
+  median_val <- round(median(df[[var]]), 2)
+
+  plot <- ggplot(df, aes_string(x = var)) + 
+              geom_histogram(bins = 100)  + 
+              geom_vline(xintercept = sum_thr, linetype = "dashed", color = "red") + 
+              theme(axis.text = element_text(size = 15, color = "black")) + 
+              labs(title = title, 
+                   subtitle = glue::glue("Median: {median_val}; Lower thr: {sum_thr[1]}; Higher thr: {sum_thr[2]}")) + 
+              scale_x_log10()
+  return(plot)
+}
+```
+
+```{r}
+df <- as.data.frame(colData(sce))
+
+gg_qc_metrics <- wrap_plots(
+                gg_hist(df, discard_sum, "sum", "Counts"),
+                gg_hist(df, discard_detected, "detected", "Features"),
+                gg_hist(df, discard_area, "cell_area", "Cell Area"),
+                ncol = 3)
+```
+
+## Filter
+
+```{r}
+filt <- sce[,sce$sum > as.numeric(attr(discard_sum, "threshold")["lower"]) &
+             sce$sum < as.numeric(attr(discard_sum, "threshold")["higher"]) &
+             sce$detected > as.numeric(attr(discard_detected, "threshold")["lower"]) &
+             sce$detected < as.numeric(attr(discard_detected, "threshold")["higher"]) &
+             sce$cell_area > as.numeric(attr(discard_area, "threshold")["lower"])]
+```
+
+## Counts/Features/Area
+
+```{r, fig.width=15, fig.height=4}
+suppressMessages({
+gg_qc_metrics <- gg_qc_metrics +
+                    plot_annotation(title = glue("Quality control - {stamp} - {sample}"),
+                                    subtitle = glue("Before filtering: {number(ncol(sce), big.mark = '.')} C; After filtering: {number(ncol(filt), big.mark = '.')} C")) 
+gg_qc_metrics
+})
+```
+
+```{r}
+sce <- filt
+md <- as.data.frame(colData(sce))
+```
+
+## Spatial distribution of counts & features filt
+
+```{r, fig.width=16, fig.height=12}
+df <- as.data.frame(colData(sce))
+
+plot_metrics <- function(data, color_var) {
+  ggplot(df, aes(x = x_centroid, y = y_centroid, color = .data[[color_var]])) + 
+    scale_color_gradientn(colors  = c("gold","navy")) +
+  ggrastr::rasterise(geom_point(size = 0.1, shape = 16), dpi = 600) +
+    geom_vline(xintercept = xmax, color = "red", linetype = "dashed") +
+    geom_vline(xintercept = xmin, color = "red", linetype = "dashed") +
+    geom_hline(yintercept = ymin, color = "red", linetype = "dashed") +
+    geom_hline(yintercept = ymax, color = "red", linetype = "dashed") +
+  theme_bw() + 
+  theme(panel.grid = element_blank(), text = element_text(colour = "black", size = 20), 
+        axis.text = element_text(colour = "black", size = 15)) 
+}
+
+# Plot for nCount_RNA
+gg_spat_counts <- plot_metrics(df, "sum")
+# Plot for nFeature_RNA
+gg_spat_feat <- plot_metrics(df, "detected")
+
+gg_spat_metrics <- wrap_plots(gg_spat_counts,gg_spat_feat, ncol = 2) + 
+  plot_annotation(title = glue("{stamp} - {sample}"), tag_levels = "A",theme = theme(plot.title = element_text(size = 30)))
+
+gg_spat_metrics
+```
+
+## Save
+
+```{r}
+dir <- glue("{plt_dir}/{stamp}/{sample}")
+dir.create(dir, showWarnings = FALSE, recursive = T)
+
+pdf(glue("{dir}/QC1.pdf"), width = 14, height = 4 )
+gg_qc_metrics
+dev.off()
+```
+
+```{r}
+pdf(glue("{dir}/QC3.pdf"), width = 24, height = 18)
+gg_spat_metrics
+dev.off()
+```
+
+```{r}
+dir <- glue("{proj_dir}/data/{stamp}/{sample}")
+dir.create(dir, showWarnings = F)
+#qsave(filt, glue("{dir}/qc_sce.qs"))
+HDF5Array::saveHDF5SummarizedExperiment(filt, dir = glue("{dir}/qc_sce"))
+```
+
+## SessionInfo
+
+```{r}
+sessionInfo()
+```
