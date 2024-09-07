@@ -989,12 +989,23 @@ library(ggplot2)
 library(dplyr)
 library(glue)
 library(patchwork)
-
-create_plots2 <- function(spe, variable, markers, pal) {
-  # Plot reduced dimensions
-  gg_um <- plotReducedDim(spe, "UMAP", colour_by = variable, point_size = 1, scattermore = T, rasterise = F) +
+library(scater)
+create_plots2 <- function(spe, variable, markers) {
+  # Plot UMAP 
+  df <- as.data.frame(colData(spe))
+  um <- reducedDim(spe,"UMAP")
+  df <- cbind(df,um)
+  df <- df[sample(rownames(df)),]
+  
+  pal <- palette_general()
+  length(pal) <- length(unique(df[[variable]]))
+  names(pal) <- unique(df[[variable]])
+  
+  gg_um <- ggplot(df, aes(x = UMAP1, y= UMAP2, color = !!sym(variable))) +
+    geom_point(shape = 16, size = 0.1) +
     scale_color_manual(values = pal) +
-    theme(legend.position = "none")
+    theme_bw() +
+    theme(panel.background = element_blank(), panel.grid = element_blank())
   
   # Create a data frame for the bar plots
   cells <- as.data.frame(table(spe[[variable]])) %>%
@@ -1010,11 +1021,11 @@ create_plots2 <- function(spe, variable, markers, pal) {
     scale_y_reverse() +
     coord_flip() +
     theme(legend.position = "bottom")
-    labs(x = "", y = "Percentage",
-         title = glue("N = {sum(cells$Freq)} cells")) +
+  labs(x = "", y = "Percentage",
+       title = glue("N = {sum(cells$Freq)} cells")) +
     theme(axis.text.x = element_blank(), text = element_text(size = 20), axis.ticks.x = element_blank(), legend.position = "right")
   
-  # Dotplot
+  # Dotplot
   gg_dots <- plotDots(spe, features = intersect(markers, rownames(spe)), group = variable, scale =TRUE, center = TRUE) +
     coord_flip() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
@@ -1065,3 +1076,16 @@ create_plots3 <- function(spe, variable, markers, pal) {
   return(A)
 }
 ###############################################################################
+
+mcf7_markers = c("TFF1","SPTSSB","AREG","MDK","PSMD6","ACKR3","EEF1A2","USP32","GATA3")
+skbr3_markers = c("KRT7","DHRS2","ERBB2","LGALS3BP","SUSD2","S100A9","S100A6","CLU","VTCN1")
+lncap_markers = c("UGT2B17", "UGT2B28", "UGT2B11", "KLK4", "KLK3", "KLK2", "ALDH3B2", "FAAH", "DDC")
+
+###############################################################################
+scientific_10 <- function(x) {
+  parse(text=gsub("e\\+?0?", " %*% 10^", scales::scientific_format()(x)))
+}
+###############################################################################
+
+
+

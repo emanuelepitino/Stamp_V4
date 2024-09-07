@@ -43,7 +43,7 @@ names(pal) <- unique(sce$label)
 
 ## Clusters analysis
 ```{r}
-gg_clust1 <- create_plots2(sce, "label", intersect(feats_xenium, rownames(sce)), pal)
+gg_clust1 <- create_plots2(sce, "label", intersect(feats_xenium, rownames(sce)))
 
 df <- as.data.frame(colData(sce))
 gg_clust2 <- wrap_plots(
@@ -83,7 +83,7 @@ pal_lvl1 <- c(pal_lvl1, "LowQ" = "grey")
 
 ```{r}
 # A
-gg_anno1 <- create_plots2(sce, "lvl1", intersect(feats_xenium, rownames(sce)), pal_lvl1)
+gg_anno1 <- create_plots2(sce, "lvl1", intersect(feats_xenium, rownames(sce)))
 
 # B
 df <- as.data.frame(colData(sce))

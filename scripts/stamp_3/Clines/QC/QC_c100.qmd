@@ -1,0 +1,170 @@
+---
+title: "QC - stamp2 -  c100"
+subtitle: "Emanuele Pitino"
+date: "`r Sys.Date()`"
+format: 
+  html:
+    theme: superhero
+    smooth-scroll: true
+    code-fold: true
+    self-contained: true
+    toc: true
+    toc_float: 
+      collapsed: false
+      smooth_scroll: true
+params:
+  sample: !expr NA
+editor: source
+editor_options: 
+  chunk_output_type: console
+execute:
+  echo: true
+---
+
+## Libraries
+```{r}
+suppressPackageStartupMessages({
+library(SingleCellExperiment)
+library(dplyr)
+library(here)
+library(scater)
+library(scuttle)
+library(data.table)
+library(glue)
+library(qs)
+library(scales)
+library(tidyr)
+})
+```
+
+```{r}
+dir <- glue("{here()}")
+source(glue("{dir}/scripts/misc/paths.R"))
+source(glue("{dir}/scripts/misc/BIN.R"))
+
+#sample <- params$sample
+sample <- "c100"
+stamp <- "stamp_3"
+dir <- glue("{here()}")
+source(glue("{dir}/scripts/misc/paths.R"))
+source(glue("{dir}/scripts/misc/BIN.R"))
+```
+
+## Load data
+
+```{r}
+sce <- qread(glue("{proj_dir}/data/{stamp}/raw/raw_proc/layout_sce.qs"), nthreads = 8)
+sce <- sce[,sce$sample == sample]
+```
+
+## Calculate qc metrics
+
+```{r}
+sce <- addPerCellQCMetrics(sce)
+sce
+```
+
+```{r}
+gg_hist <- function(df, var, title) {
+  median_val <- round(median(df[[var]]), 2)
+  plot <- ggplot(df, aes_string(x = var)) + 
+              geom_density()  + 
+              geom_vline(xintercept = median_val, color = "red") + 
+              theme_bw() +
+              theme(axis.text = element_text(size = 10, color = "black"),
+                    text = element_text(size = 15, color = "black"),
+                    plot.subtitle = element_text(size = 12),
+                    panel.grid = element_blank()) +
+              labs(title = "", 
+                   y = "", x = title,
+                   subtitle = glue::glue("Median: {number(median_val, big.mark = '.')}"))
+   return(plot)
+}
+```
+
+
+
+```{r}
+suppressWarnings({
+df <- as.data.frame(colData(sce))
+
+#df <- df[df$sum > 100 & df$detected > 100 & df$Area.um2 > 30,]
+
+gg_qc_metrics <- wrap_plots(
+                gg_hist(df, "sum", "nCounts"),
+                gg_hist(df, "detected", "nFeatures"),
+                gg_hist(df, "Area.um2", "Area.um2"),
+                ncol = 1)
+})
+```
+
+
+# Filter
+
+```{r}
+filt <- sce[,sce$sum > 100 &
+             sce$sum < 8000 &
+             sce$detected > 100 & 
+             sce$detected < 8000] 
+```
+
+
+# Spatial distribution of counts - features - cell area
+```{r}
+df <- as.data.frame(colData(filt))
+plot_metrics <- function(data, color_var) {
+  ggplot(df, aes(x = CenterX_global_px, y = CenterY_global_px, color = .data[[color_var]])) + 
+  coord_equal() +
+  scale_color_gradientn(colors  = c("gold","navy")) +
+  ggrastr::rasterise(geom_point(size = 0.5, shape = 16), dpi = 600) +
+  theme_bw() + 
+  theme(panel.grid = element_blank(), text = element_text(colour = "black", size = 20), 
+        axis.text = element_text(colour = "black", size = 15)) 
+}
+
+# Plot for nCount_RNA
+gg_spat_counts <- plot_metrics(df, "nCount_RNA")
+# Plot for nFeature_RNA
+gg_spat_feat <- plot_metrics(df, "nFeature_RNA")
+
+# Cell area
+gg_spat_area <- plot_metrics(df, "Area.um2")
+
+
+gg_spat_metrics <- wrap_plots(gg_spat_counts,gg_spat_feat, gg_spat_area, ncol = 3) + 
+  plot_annotation(title = glue("{stamp} - {sample}"), tag_levels = "A",theme = theme(plot.title = element_text(size = 30)))
+```
+
+```{r}
+gg_spat_counts
+gg_spat_feat
+gg_spat_area
+```
+
+## Save plots
+```{r}
+pltdir <- glue("{plt_dir}/{stamp}/{sample}")
+dir.create(pltdir, showWarnings = F, recursive = T)
+
+pdf(glue("{pltdir}/QC1_{stamp}_{sample}.pdf"), width = 15, height = 4)
+gg_qc_metrics
+dev.off()
+```
+
+
+```{r}
+pdf(glue("{plt_dir}/QC3.pdf"), width = 24, height = 18)
+gg_spat_metrics
+dev.off()
+```
+
+```{r}
+filt
+```
+
+## Save sce
+```{r}
+outdir <- glue("{proj_dir}/data/{stamp}/processed/{sample}")
+dir.create(outdir, showWarnings = F, recursive = T)
+qsave(filt, file = glue("{outdir}/qc_{sample}.qs"), nthreads = 8)
+```

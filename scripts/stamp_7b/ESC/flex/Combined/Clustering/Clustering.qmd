@@ -1,5 +1,5 @@
 ---
-title: "Clustering & Doublets Removal - Flex - Stamp 7b - Combined"
+title: "Clustering - Flex - Stamp 7b - Combined"
 subtitle: "Emanuele Pitino"
 date: "`r Sys.Date()`"
 format: 
@@ -12,9 +12,6 @@ format:
     toc_float: 
       collapsed: false
       smooth_scroll: true
-params:
-  sample: !expr NA
-  npcs: !expr NA
 editor: source
 editor_options: 
   chunk_output_type: console
@@ -63,36 +60,79 @@ sce <- qread(glue("{base_dir}/proc_sce.qs"), nthreads = 8)
 sce
 ```
 
-# Clustering
 ```{r}
-# Build SNN graph
-snn.gr <- buildSNNGraph(sce, type = "jaccard", use.dimred="PCA", BPPARAM = bp)
-# Run Louvain
-clusters <- igraph::cluster_louvain(snn.gr, resolution = 0.8)
+df <- as.data.frame(colData(sce))
+df$bcd <- rownames()
+um <- reducedDim(sce,"PCA")
+df <- cbind(df,um)
+df <- df[sample(nrow(df)), ]
+
+
+ggplot(df, aes(x = PC1, y = PC2, color = sample)) +
+  ggrastr::rasterise(geom_point(shape = 16, size = 0.1), dpi = 1000) +
+  #scale_color_manual(values = pal) +
+  theme_bw() +
+  theme(
+    text = element_text(size = 15, color = "black"),
+    axis.text = element_text(size = 10, color = "black"),
+    panel.grid.major = element_blank(),  # Remove major grid lines
+    panel.grid.minor = element_blank()   # Remove minor grid lines
+  ) +
+  guides(color = guide_legend(override.aes = list(size = 3))) +
+  labs(x = "umap1", y = "umap2", color = "Sample")
 ```
 
-## Pairwise modularity score
+# Clustering
+
+## Build snn graph with different n neighbours
 ```{r}
-# Cluster Modularity score
-ratio <- bluster::pairwiseModularity(snn.gr, clusters$membership, as.ratio=TRUE)
-library(pheatmap)
-pheatmap(log2(ratio+1), cluster_rows=FALSE, cluster_cols=FALSE,
-         color=colorRampPalette(c("gold", "navy"))(100))
+snn <- buildSNNGraph(sce, type = "jaccard", k = 10, use.dimred="PCA", BPPARAM = bp)
+```
+
+## Run louvain 
+```{r}
+clusters <- igraph::cluster_louvain(snn, resolution = 1)
+```
+
+```{r}
+sce$label <- as.character(clusters$membership) # assign labels
+pal <- Polychrome::createPalette(n_distinct(sce$label), c("#fc6060", "#74f774", "#7c7cfc")) # palette
+names(pal) <- unique(sce$label)
+```
+
+## Silhouette plot
+```{r}
+sil.approx <- approxSilhouette(reducedDim(sce, "PCA"), clusters= sce$label)
+sil.data <- as.data.frame(sil.approx)
+sil.data$closest <- factor(ifelse(sil.data$width > 0, sce$label, sil.data$other))
+sil.data$cluster <- sce$label
+ggplot(sil.data, aes(x=cluster, y=width, colour=closest)) +
+    ggbeeswarm::geom_quasirandom(method="smiley", size = 0.8, shape = 16) + 
+  scale_color_manual(values = pal)
 ```
 
 ## Clusters in Umap
 ```{r, fig.width= 8, fig.height= 5}
-# Assign labels
-sce$label <- as.character(clusters$membership)
+df <- as.data.frame(colData(sce))
+df$bcd <- rownames()
+um <- reducedDim(sce,"UMAP")
+df <- cbind(df,um)
+df <- df[sample(nrow(df)), ]
 
-pal <- Polychrome::createPalette(n_distinct(sce$label), c("#fc6060", "#74f774", "#7c7cfc"))
-names(pal) <- unique(sce$label)
+df$label <- factor(df$label, levels = sort(as.numeric(unique(df$label))))
 
-sce <- sce[, sample(ncol(sce))]
-plotReducedDim(sce, "UMAP", colour_by ="label", point_size = 1, scattermore = T) +
+ggplot(df, aes(x = UMAP1, y = UMAP2, color = label)) +
+  ggrastr::rasterise(geom_point(shape = 16, size = 0.1), dpi = 1000) +
   scale_color_manual(values = pal) +
-  guides(colour = guide_legend(override.aes = list(alpha = 1))) +
-  labs(color = "Cluster")
+  theme_bw() +
+  theme(
+    text = element_text(size = 15, color = "black"),
+    axis.text = element_text(size = 10, color = "black"),
+    panel.grid.major = element_blank(),  # Remove major grid lines
+    panel.grid.minor = element_blank()   # Remove minor grid lines
+  ) +
+  guides(color = guide_legend(override.aes = list(size = 3))) +
+  labs(x = "umap1", y = "umap2", color = "Cluster")
 ```
 
 ## Clusters numbers
@@ -105,7 +145,7 @@ df$Var1 <- factor(df$Var1, levels = df$Var1[order(-df$Freq)])
 
 ggplot(df, aes(x = Var1, y = Freq, fill = Var1)) + 
   geom_col() + 
-  geom_text(aes(label = Freq), vjust = -0.5, size = 5) +
+  geom_text(aes(label = Freq), vjust = -0.5, size = 3) +
   scale_fill_manual(values = pal) + 
   theme_bw() +
   theme(text = element_text(size = 15, color = "black"),

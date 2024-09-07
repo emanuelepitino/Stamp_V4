@@ -27,8 +27,8 @@ library(data.table)
 ```{r}
 dir <- glue("{here()}")
 # Parameters and paths
-source(glue("{dir}/misc/paths.R"))
-source(glue("{dir}/misc/BIN.R"))
+source(glue("{dir}/scripts/misc/paths.R"))
+source(glue("{dir}/scripts/misc/BIN.R"))
 ```
 
 
@@ -55,32 +55,20 @@ rownames(counts) <- features$V2
 md <- fread(glue("{data_dir}/cells.csv.gz"), sep = ",", nThread = 5, header = T)
 ```
 
-
 ```{r}
-# isolate negative control matrices:
-NegControlProbe <- counts[grepl("NegControlProbe", rownames(counts)) ,]
-NegControlCodeword <- counts[grepl("NegControlCodeword", rownames(counts)) ,]
-UnassignedCodeword <- counts[grepl("UnassignedCodeword", rownames(counts)) ,]
+gs <- rownames(counts)
+ncp <- grep("NegControlProbe", gs)
+ncc <- grep("NegControlCodeword", gs)
+uc <- grep("UnassignedCodeword", gs)
+
+ as <- list(counts=counts[-c(ncp, ncc,uc), ])
+ ae <- list(
+     NegControlProbe=SingleCellExperiment(list(counts=counts[ncp, ])),
+     NegControlCodeword=SingleCellExperiment(list(counts=counts[ncc,])),
+     UnassignedCodeword = SingleCellExperiment(list(counts=counts[uc,])))
+# 
+sce <- SingleCellExperiment(as, colData=md, altExps=ae)
 ```
-
-```{r}
-counts <- counts[ !grepl("NegControlProbe", rownames(counts)) &
-                   !grepl("NegControlCodeword", rownames(counts)) &
-                   !grepl("UnassignedCodeword", rownames(counts)),]
-```
-
-
-```{r}
-sce <- SingleCellExperiment(assays = list(counts = counts), colData = md)
-```
-
-
-```{r}
-metadata(sce)$UnassignedCodeword <- UnassignedCodeword
-metadata(sce)$NegControlCodeword <- NegControlCodeword
-metadata(sce)$NegControlProbe <- NegControlProbe
-```
-
 
 ```{r}
 colnames(colData(sce))
@@ -92,19 +80,12 @@ proj_dir
 
 
 ```{r}
-res_dir <- paste0(proj_dir, "/data/processed")
+res_dir <- paste0(proj_dir, "/data/stamp_5/processed")
 if (!dir.exists(res_dir)) {
     dir.create(res_dir)
 }
 qsave(sce, file = glue("{res_dir}/raw_sce.qs"))
 ```
-
-
-```{r}
-res_dir <- paste0(proj_dir, "/data/stamp_5/processed")
-HDF5Array::saveHDF5SummarizedExperiment(sce, dir =  glue("{res_dir}/raw_sce"))
-```
-
 
 ```{r}
 sessionInfo()

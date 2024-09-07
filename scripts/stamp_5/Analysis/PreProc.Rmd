@@ -33,7 +33,7 @@ source(glue("{dir}/scripts/misc/BIN.R"))
 
 ```{r}
 res_dir <- paste0(proj_dir, "/data/stamp_5/processed")
-sce <- HDF5Array::loadHDF5SummarizedExperiment(glue("{res_dir}/sce_filt"))
+sce <- qread(glue("{res_dir}/sce_filt.qs"))
 ```
 
 ```{r} 
@@ -41,14 +41,12 @@ sce
 ```
 
 ```{r}
-sce <- logNormCounts(sce, subset.row = NULL, BPPARAM = bp)
+#sce <- sce[,sample(colnames(sce),10000)]
 ```
-
 
 ```{r}
-#sce <- sce[,1:1000]
+sce <- logNormCounts(sce, BPPARAM = bp)
 ```
-
 
 ```{r}
 set.seed(101001)
@@ -67,7 +65,6 @@ data <- data.frame(PC = 1:length(percent.var), Variance = percent.var)
 # Plot using ggplot2
 gg_var <- ggplot(data, aes(x = PC, y = Variance)) +
   geom_point() +
-  scale_y_log10() +
   xlab("PC") +
   ylab("Variance explained (%)") +
   geom_vline(xintercept = num_pcs_to_retain, color = "red") +

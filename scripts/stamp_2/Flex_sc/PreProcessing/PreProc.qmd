@@ -1,0 +1,196 @@
+---
+title: "PreProcessing - Flex - Stamp 2 - Flex"
+subtitle: "Emanuele Pitino"
+date: "`r Sys.Date()`"
+format: 
+  html:
+    theme: superhero
+    smooth-scroll: true
+    code-fold: true
+    self-contained: true
+    toc: true
+    toc_float: 
+      collapsed: false
+      smooth_scroll: true
+params:
+  sample: !expr NA
+  npcs: !expr NA
+editor: source
+editor_options: 
+  chunk_output_type: console
+execute:
+  echo: true
+  fig-width: 12     
+  fig-height: 9 
+---
+## Setup
+### Libraries
+```{r}
+suppressPackageStartupMessages({
+library(SingleCellExperiment)
+library(dplyr)
+library(here)
+library(scater)
+library(scuttle)
+library(scran)
+library(data.table)
+library(glue)
+library(qs)
+library(scales)
+})
+```
+
+### Paths
+```{r}
+dir <- glue("{here()}")
+source(glue("{dir}/scripts/misc/paths.R"))
+source(glue("{dir}/scripts/misc/BIN.R"))
+
+stamp <- "Stamp_2"
+sample <- "flex_clines"
+dir <- glue("{here()}")
+source(glue("{dir}/scripts/misc/paths.R"))
+source(glue("{dir}/scripts/misc/BIN.R"))
+```
+
+### Load data
+```{r}
+base_dir <- glue("{proj_dir}/data/{stamp}/processed/flex/{sample}")
+
+sce <- qread(glue("{base_dir}//qc_flex_{sample}.qs"), nthreads = 8)
+sce
+```
+
+# Processing
+
+## LogNorm
+```{r}
+sce <- logNormCounts(sce)
+```
+
+## Feature Selection
+```{r}
+set.seed(0010101)
+dec.var <- modelGeneVar(sce, BPPARAM = bp) # model gene var
+hvg <- getTopHVGs(dec.var,fdr.threshold = 1) # select hvg on fdr
+
+dec.var$hvg <- "no" # Assign to dec.var column for plot
+dec.var$hvg[rownames(dec.var) %in% hvg] <- "yes"
+gg_hvg <- plot_hvg(dec.var = dec.var, sub = sample) # plot
+gg_hvg
+```
+
+## PCA
+
+```{r}
+set.seed(101001)
+sce <- fixedPCA(sce, subset.row = hvg)
+
+num_pcs_to_retain <- 4
+percent.var <- attr(reducedDim(sce), "percentVar")
+
+library(PCAtools)
+# Create a data frame for ggplot
+data <- data.frame(PC = 1:length(percent.var), Variance = percent.var)
+# Plot
+gg_var <- ggplot(data, aes(x = PC, y = Variance)) +
+  geom_point() +
+  xlab("PC") +
+  ylab("Variance explained (%)") +
+  geom_vline(xintercept = 4, color = "red") +
+  theme_bw()
+gg_var
+```
+
+```{r}
+reducedDim(sce, "PCA") <-  reducedDim(sce, "PCA")[,1:num_pcs_to_retain]
+wh(6,5)
+gg_pca <- plotPCA(sce, scattermore = TRUE, point_size = 2) + ggtitle("PCA")
+gg_pca
+```
+
+## Run UMAP
+```{r}
+set.seed(123)
+sce <- runUMAP(sce, dimred="PCA", BPPARAM = bp)
+gg_um <- plotReducedDim(sce, "UMAP", scattermore = TRUE, point_size = 2) 
+gg_um
+```
+
+
+# Save plots
+```{r}
+combined <- wrap_plots(gg_var, gg_hvg, gg_pca, gg_um, ncol = 2, nrow = 2) +
+  plot_annotation(tag_levels = "A") + 
+  plot_annotation(title = glue("Flex - Stamp 7b - {sample}"), subtitle = glue("N = {comma(ncol(sce))} cells"))
+
+plotdir <- glue("{plt_dir}/{stamp}/flex/{sample}")
+dir.create(plotdir, showWarnings = F, recursive = T)
+
+pdf(glue("{plotdir}/PreProc_{stamp}_{sample}.pdf"), width = 20, height = 12)
+combined
+dev.off()
+```
+
+```{r}
+library(bluster)
+set.seed(1234)
+nn.clust <- clusterCells(sce, use.dimred="PCA",BLUSPARAM=NNGraphParam(k=50,cluster.fun = "louvain"))
+colLabels(sce) <- nn.clust
+```
+
+```{r}
+plotReducedDim(sce, "UMAP", colour_by="label", scattermore = TRUE, text_by = "label")
+```
+
+```{r}
+set.seed(10010101)
+library(scDblFinder)
+sce <- scDblFinder(sce, clusters=colLabels(sce))
+```
+
+```{r}
+wh(12,5)
+wrap_plots(plotReducedDim(sce, "UMAP", colour_by="label", text_by = "label", scattermore = TRUE),
+           plotReducedDim(sce, "UMAP", colour_by="scDblFinder.class", text_by = "label", scattermore = TRUE))
+```
+
+```{r}
+sce <- sce[,sce$scDblFinder.class == "singlet"]
+```
+
+```{r}
+plotHeatmap(sce, features = hvg[1:20],
+            center = TRUE, colour_columns_by = "label", 
+            order_columns_by = "label",
+            treeheight_row  = 0, treeheight_col = 0)
+```
+
+# Annotate
+```{r}
+sce$cluster <- ""
+sce$cluster[sce$label %in% c(1,2,3,6)] <- "LnCAP"
+sce$cluster[sce$label %in% c(4,7,9)] <- "MCF7"
+sce$cluster[sce$label %in% c(5,8)] <- "SKBR3"
+```
+
+
+```{r}
+sce$cluster <- factor(sce$cluster, levels = c("LnCAP","SKBR3","MCF7"))
+plotHeatmap(sce, features = hvg[1:20],
+            center = TRUE, colour_columns_by = "cluster", 
+            order_columns_by = "cluster",
+            treeheight_row  = 0, treeheight_col = 0)
+```
+
+```{r}
+plotReducedDim(sce, "UMAP", colour_by="cluster", scattermore = TRUE, text_by = "cluster")
+```
+
+
+# Save data
+```{r}
+outdir <- glue("{proj_dir}/data/{stamp}/processed/flex/{sample}")
+dir.create(outdir, showWarnings = F, recursive = T)
+qsave(sce, glue("{outdir}/proc_sce.qs"), nthreads = 8)
+```

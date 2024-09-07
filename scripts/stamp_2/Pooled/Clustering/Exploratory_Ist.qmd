@@ -1,0 +1,320 @@
+---
+title: "Exploratory - clustering - Stamp 2 - Pooled"
+subtitle: "Emanuele Pitino"
+date: "`r Sys.Date()`"
+format: 
+  html:
+    theme: superhero
+    smooth-scroll: true
+    code-fold: true
+    self-contained: true
+    toc: true
+    toc_float: 
+      collapsed: false
+      smooth_scroll: true
+editor: source
+editor_options: 
+  chunk_output_type: console
+execute:
+  echo: true
+  fig-width: 16     
+  fig-height: 12 
+---
+
+### Libraries
+
+```{r}
+suppressPackageStartupMessages({
+library(SingleCellExperiment)
+library(dplyr)
+library(here)
+library(scater)
+library(glue)
+library(qs)
+library(BiocParallel)
+library(BiocNeighbors)
+library(BiocSingular)
+library(data.table)
+library(InSituType)
+})
+```
+
+### Data loading
+
+```{r}
+dir <- glue("{here()}")
+source(glue("{dir}/scripts/misc/paths.R"))
+source(glue("{dir}/scripts/misc/BIN.R"))
+```
+
+```{r}
+stamp <- "stamp_2"
+sample <- "Pooled"
+dir <- glue("{here()}")
+source(glue("{dir}/scripts/misc/paths.R"))
+source(glue("{dir}/scripts/misc/BIN.R"))
+
+res_dir <- glue("{proj_dir}/data/{stamp}/processed/{sample}")
+sce <- qread(glue("{res_dir}/PreProcNew.qs"), nthreads = 8)
+#sce <- sce[,sample(colnames(sce),1000)]
+sce 
+```
+
+```{r}
+dir <- glue("{proj_dir}/data/{stamp}/{sample}/Ist")
+dir.create(dir, showWarnings = F, recursive = T)
+unsup <- qread(glue("{dir}/unsup.qs"))
+```
+
+
+```{r}
+sce$label <- unsup$clust[colnames(sce)]
+sce$label_prob <- unsup$prob[colnames(sce)]
+
+sce$label[sce$label == "a"] <- "SKBR3"
+sce$label[sce$label == "b"] <- "MCF7"
+sce$label[sce$label == "c"] <- "LnCAP"
+
+sce$label <- factor(sce$label, levels = c("SKBR3","MCF7","LnCAP"))
+#pal <- Polychrome::createPalette(26, c("#fc6060", "#74f774", "#7c7cfc"))
+pal <- c("#fc6060", "#74f774", "#7c7cfc")
+names(pal) <- unique(sce$label)
+```
+
+## Remove cells with transfer prob < 0.8
+```{r}
+sce <- sce[, sce$label_prob > 0.8]
+```
+
+## Cell numbers
+
+```{r}
+df <- as.data.frame(table(sce$label)) %>%
+  mutate(Proportion = round((Freq / sum(Freq)) * 100, 2))
+
+gg_cnumb <- ggplot(df, aes(x = Var1, y = Freq)) + 
+  geom_col(aes(fill = Var1)) +
+  geom_text(aes(label = glue("{round(Freq/sum(Freq)*100,1)}%")), vjust = -0.5, size = 5) +
+  scale_fill_manual(values = pal) + 
+  theme_bw() +
+  theme(text = element_text(size = 15, color = "black"),
+        axis.text = element_text(size = 15, color = "black"),
+        panel.grid = element_blank()) +
+  labs(fill = "Sample", y = "# Cells") +
+  labs(x = "Cluster", fill = "Cluster")
+
+gg_cnumb
+```
+
+## Space
+```{r}
+df <- as.data.frame(colData(sce))
+df <- df[sample(rownames(df)),]
+
+gg_space <-  ggplot(df, aes(x = CenterX_global_px, y = CenterY_global_px, color = label)) + 
+  scale_color_manual(values = pal) +
+  ggrastr::rasterise(geom_point(size = 0.1, shape = 16), dpi = 600) +
+  theme_bw() + 
+  theme(panel.grid = element_blank(), text = element_text(colour = "black", size = 20), 
+        axis.text = element_text(colour = "black", size = 15)) +
+  labs(x = "x_px", y = "y_px") +
+  guides(color = guide_legend(override.aes = list(size = 4))) +
+   coord_equal() +
+   labs(color = "Cluster")
+
+gg_space
+```
+
+
+## FlightPath
+```{r}
+fp_layout <- flightpath_layout(logliks = unsup$logliks, profiles = unsup$profiles)
+
+# Replace values in clustpos dimnames
+fp_layout$clustpos <- setNames(fp_layout$clustpos, c("SKBR3", "MCF7", "LnCAP"))
+
+# Replace values in clust
+fp_layout$clust <- gsub("a", "LnCAP", fp_layout$clust)
+fp_layout$clust <- gsub("b", "MCF7", fp_layout$clust)
+fp_layout$clust <- gsub("c", "SKBR3", fp_layout$clust)
+
+# Replace names in meanconfidence
+names(fp_layout$meanconfidence) <- c("LnCAP", "MCF7", "SKBR3")
+
+gg_fp <- ggplot(fp_layout$cellpos, aes(x = x, y = y, color = fp_layout$clust)) +
+  ggrastr::rasterise(geom_point(size = 0.5, shape = 16), dpi = 800) +
+  scale_color_manual(values = pal) +
+  theme_bw() +
+    theme(text = element_text(size = 15, color = "black"),
+          axis.text = element_text(size = 10, color = "black"),
+          panel.grid = element_blank(),
+          axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(color = "Cluster", title = glue("FlightPath - {stamp} - {sample}")) +
+  guides(color = guide_legend(override.aes = list(size = 4))) 
+
+gg_fp
+```
+
+
+## InSituType Profiles
+
+Normalize & log-transform the profiles
+```{r}
+norm <- unsup$profiles /  Matrix::colSums(unsup$profiles) # normalize
+norm <- norm + 1e-6
+#lognorm <- log1p(norm) + 1e-6  # log transform
+```
+
+Calculate logFC
+
+```{r}
+result <- norm 
+for (i in 1:nrow(norm)) {
+  for (j in 1:ncol(norm)) {
+    result[i, j] <- log2(norm[i, j] / mean(norm[i, -j]))
+  }
+}
+```
+
+Take first 10 features for each cluster by logFC
+
+```{r}
+feat <- unique(as.vector(unlist(apply(result, 2, function(column) {
+  names(sort(column, decreasing = TRUE))[1:10]
+}))))
+```
+
+Remove outliers at 2.5 sd for better visualization
+
+```{r}
+x <- result[feat,]
+
+z <- \(x, th=2.5) {
+    if (is.null(dim(x))) {
+        x[x < 0] <- 0
+        sd <- sd(x, na.rm=TRUE)
+        x <- x-mean(x, na.rm=TRUE)
+        if (sd != 0) x <- x/sd
+    } else {
+        mus <- colMeans(x)
+        sds <- colSds(x)
+        x <- sweep(x, 2, mus, `-`)
+        x <- sweep(x, 2, sds, `/`)
+    }
+    x[x > +th] <- +th
+    x[x < -th] <- -th
+    return(x)
+}
+mtx_scaled <- z(x)
+```
+
+Plot
+
+```{r}
+# Perform hierarchical clustering on euclidean distance matrix with "average" method
+column_dist_euclidean <- dist(mtx_scaled, method = "euclidean")
+column_hclust_complete <- hclust(column_dist_euclidean, method = "average")
+colnames(mtx_scaled) <- c("SKBR3", "MCF7", "LnCAP")
+
+mtx_scaled <- mtx_scaled[, ncol(mtx_scaled):1]
+# Create the heatmap
+color_function <- circlize::colorRamp2(c(min(mtx_scaled), 0, max(mtx_scaled)), c("navy", "white", "red"))
+hm <- ComplexHeatmap::Heatmap(t(mtx_scaled),
+              name = "expression",
+              cluster_rows = F,
+              cluster_columns = as.dendrogram(column_hclust_complete),
+              show_row_names = TRUE,
+              show_column_names = TRUE,
+              show_row_dend = FALSE,
+              show_column_dend = FALSE,
+              col = color_function,
+              row_names_side = "left",
+              height = unit(4,"cm"),
+              column_names_gp = grid::gpar(fontsize = 8))
+
+hm
+```
+
+```{r}
+df <- as.data.frame(colData(sce))
+um <- as.data.frame(reducedDim(sce,"UMAP"))
+df <- cbind(df,um)
+
+gg_um <- ggplot(df, aes(x = V1, y = V2, color = label)) +
+ ggrastr::rasterise(geom_point(shape = 16, size = 0.1), dpi = 1000) +
+  scale_color_manual(values = pal) +
+  labs(x = "UMAP1", y = "UMAP2", color = "Cluster") +
+  theme_bw() +
+  theme(
+    text = element_text(size = 15, color = "black"),
+    axis.text = element_text(size = 10, color = "black"),
+    panel.grid = element_blank()) +
+  guides(color = guide_legend(override.aes = list(size = 3)))
+
+gg_um
+```
+
+```{r}
+pdf(glue("{plt_dir}/{stamp}/{sample}/a.pdf"))
+gg_cnumb
+dev.off()
+
+pdf(glue("{plt_dir}/{stamp}/{sample}/b.pdf"))
+gg_fp
+dev.off()
+
+pdf(glue("{plt_dir}/{stamp}/{sample}/c.pdf"))
+gg_space
+dev.off()
+
+pdf(glue("{plt_dir}/{stamp}/{sample}/d.pdf"))
+gg_um
+dev.off()
+
+pdf(glue("{plt_dir}/{stamp}/{sample}/e.pdf"))
+hm
+dev.off()
+```
+
+```{r}
+library(spatstat)
+
+# Assume `ppp_object` is your point pattern object (class 'ppp')
+
+# Generate an envelope for the K-function using Monte Carlo simulations
+envelope_K <- envelope(ppp_object, Kest, nsim=99)
+
+# Manually calculate the p-value
+n_above <- sum(envelope_K$obs > envelope_K$lo)
+n_below <- sum(envelope_K$obs < envelope_K$hi)
+p_value <- min(n_above, n_below) / length(envelope_K$obs)
+
+# Extract data for ggplot
+envelope_df <- data.frame(
+  r = envelope_K$r,           # Distance values
+  obs = envelope_K$obs,       # Observed K-function
+  lo = envelope_K$lo,         # Lower envelope
+  hi = envelope_K$hi          # Upper envelope
+)
+
+# Plot the K-function with the envelope and p-value annotation
+ggplot(envelope_df, aes(x = r)) +
+  geom_line(aes(y = obs), color = "blue", size = 1) +             # Observed K-function
+  geom_ribbon(aes(ymin = lo, ymax = hi), fill = "gray80") +       # Envelope
+  geom_line(aes(y = lo), linetype = "dashed", color = "red") +    # Lower envelope
+  geom_line(aes(y = hi), linetype = "dashed", color = "red") +    # Upper envelope
+  labs(
+    title = "Ripley's K-function with Monte Carlo Envelope",
+    x = "Distance r",
+    y = "K(r)"
+  ) +
+  annotate("text", x = max(envelope_df$r) * 0.8, y = max(envelope_df$obs), 
+           label = paste("p-value:", round(p_value, 4)), 
+           size = 5, color = "black", hjust = 0) +                # Annotate p-value
+  theme_minimal()
+
+```
+
+```{r}
+sessionInfo()
+```

@@ -35,7 +35,7 @@ source(glue("{dir}/scripts/misc/BIN.R"))
 ```{r}
 sample <- "PBMCs_mix"
 sname <- "output-XETG00067__0007171__PBMCs_Mix__20240731__090055"
-data_dir <- glue("{proj_dir}/data/stamp_9/{sample}/raw/{sname}")
+data_dir <- glue("{proj_dir}/data/stamp_8/{sample}/raw/{sname}")
 counts <- Matrix::readMM(gzfile(glue("{data_dir}/cell_feature_matrix/matrix.mtx.gz")))
 barcodes <- fread(glue("{data_dir}/cell_feature_matrix/barcodes.tsv.gz"), sep = "\t", nThread = 3, header = F)
 features <- fread(glue("{data_dir}/cell_feature_matrix/features.tsv.gz"), sep = "\t", nThread = 3, header = F)
@@ -59,38 +59,38 @@ md <- fread(glue("{data_dir}/cells.csv.gz"), sep = ",", nThread = 5, header = T)
 
 ```{r}
 # isolate negative control matrices:
+Intergenic_Region <- counts[grepl("Intergenic_Region", rownames(counts)) ,]
 NegControlProbe <- counts[grepl("NegControlProbe", rownames(counts)) ,]
+DeprecatedCodeword <- counts[grepl("DeprecatedCodeword", rownames(counts)) ,]
 NegControlCodeword <- counts[grepl("NegControlCodeword", rownames(counts)) ,]
 UnassignedCodeword <- counts[grepl("UnassignedCodeword", rownames(counts)) ,]
 ```
 
 ```{r}
-counts <- counts[ !grepl("NegControlProbe", rownames(counts)) &
-                   !grepl("NegControlCodeword", rownames(counts)) &
-                   !grepl("UnassignedCodeword", rownames(counts)),]
+counts <- counts[ !grepl("Intergenic_Region", rownames(counts)) &
+                  !grepl("NegControlProbe", rownames(counts)) &
+                  !grepl("DeprecatedCodeword", rownames(counts)) &
+                  !grepl("NegControlCodeword", rownames(counts)) &
+                  !grepl("UnassignedCodeword", rownames(counts)),]
+```
+
+```{r}
+ ae <- list(
+     Intergenic_Region=SingleCellExperiment(list(counts=Intergenic_Region)),
+     NegControlProbe=SingleCellExperiment(list(counts=NegControlProbe)),
+     DeprecatedCodeword=SingleCellExperiment(list(counts=DeprecatedCodeword)),
+     NegControlCodeword=SingleCellExperiment(list(counts=NegControlCodeword)),
+     UnassignedCodeword=SingleCellExperiment(list(counts=UnassignedCodeword)))
 ```
 
 
 ```{r}
-sce <- SingleCellExperiment(assays = list(counts = counts), colData = md)
+sce <- SingleCellExperiment(assays = list(counts = counts), colData = md, altExps = ae)
 ```
 
-```{r}
-metadata(sce)$UnassignedCodeword <- UnassignedCodeword
-metadata(sce)$NegControlCodeword <- NegControlCodeword
-metadata(sce)$NegControlProbe <- NegControlProbe
-```
 
 ```{r}
-colnames(colData(sce))
-```
-
-```{r}
-proj_dir
-```
-
-```{r}
-res_dir <-  glue("{proj_dir}/data/stamp_9/{sample}/processed")
+res_dir <-  glue("{proj_dir}/data/stamp_8/{sample}/processed")
 dir.create(res_dir, showWarnings = F)
 qsave(sce, file = glue("{res_dir}/raw_sce.qs"), nthreads = 8)
 ```

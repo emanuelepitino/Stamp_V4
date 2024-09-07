@@ -42,7 +42,7 @@ source(glue("{dir}/scripts/misc/paths.R"))
 source(glue("{dir}/scripts/misc/BIN.R"))
 
 sample <- params$sample
-sample <- "iESC_6h"
+#sample <- "iESC_6h"
 stamp <- "stamp_7b"
 dir <- glue("{here()}")
 source(glue("{dir}/scripts/misc/paths.R"))
@@ -118,7 +118,7 @@ gg_hist <- function(df, outliers, var, title) {
   median_val <- round(median(df[[var]]), 2)
 
   plot <- ggplot(df, aes_string(x = var)) + 
-              geom_histogram(bins = 100)  + 
+              geom_histogram(bins = 500)  + 
               geom_vline(xintercept = sum_thr, linetype = "dashed", color = "red") + 
               theme(axis.text = element_text(size = 15, color = "black")) + 
               labs(title = title, 
@@ -136,7 +136,7 @@ gg_qc_metrics <- wrap_plots(
                 gg_hist(df, discard_sum, "sum", "Counts"),
                 gg_hist(df, discard_detected, "detected", "Features"),
                 gg_hist(df, discard_mito, "subsets_Mito_percent", "Mito%"),
-                ncol = 3)
+                ncol = 1)
 })
 ```
 
@@ -151,11 +151,17 @@ filt <- sce[,sce$sum > as.numeric(attr(discard_sum, "threshold")["lower"]) &
 ```
 
 ## QC histograms
-```{r, fig.width=16, fig.height=4}
+```{r, fig.width=10, fig.height=12}
 suppressMessages(suppressWarnings({
   gg_qc_metrics <- gg_qc_metrics +
-                    plot_annotation(title = glue("Quality control - Flex - {stamp} - {sample}"),
-                                    subtitle = glue("Before filtering: {number(ncol(sce), big.mark = '.')} C; After filtering: {number(ncol(filt), big.mark = '.')} C")) 
+    plot_annotation(
+      title = glue("Quality control - Flex - {stamp} - {sample}"),
+      subtitle = glue("Raw: {number(ncol(sce), big.mark = '.')} C; Filtered: {number(ncol(filt), big.mark = '.')} C"),
+      theme = theme(
+        plot.title = element_text(size = 20, face = "bold"),  # Adjust title size
+        plot.subtitle = element_text(size = 16)              # Adjust subtitle size
+      )
+    )
   gg_qc_metrics
 }))
 ```

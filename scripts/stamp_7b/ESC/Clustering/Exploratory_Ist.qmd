@@ -63,12 +63,13 @@ sce
 ```{r}
 dir <- glue("{proj_dir}/data/{stamp}/{sample}/Ist")
 dir.create(dir, showWarnings = F, recursive = T)
-unsup <- qread(glue("{dir}/unsup_10_20.qs"))
+unsup <- qread(glue("{dir}/unsup.qs"))
 ```
 
 
 ```{r}
 sce$label <- unsup$clust[colnames(sce)]
+sce$label_prob <- unsup$prob[colnames(sce)]
 pal <- Polychrome::createPalette(26, c("#fc6060", "#74f774", "#7c7cfc"))
 names(pal) <- unique(sce$label)
 ```
@@ -89,6 +90,55 @@ ggplot(df, aes(x = Var1, y = Freq)) +
         panel.grid = element_blank()) +
   labs(fill = "Sample", y = "# Cells") +
   labs(x = "Cluster", fill = "Cluster")
+```
+
+## Density plot
+
+```{r}
+library(spatstat)
+# Define the window 
+df <- as.data.frame(colData(sce))
+x_range <- range(df$CenterX_global_px, na.rm = TRUE)
+y_range <- range(df$CenterY_global_px, na.rm = TRUE)
+win <- owin(xrange = x_range, yrange = y_range)
+
+# Convert your dataframe to a point pattern (ppp) object within the specified window
+df_ppp <- ppp(df$CenterX_global_px, df$CenterY_global_px, window = win)
+
+density_obj <- density(df_ppp)
+
+# Convert the density object to a data frame for ggplot
+density_df <- as.data.frame(as.table(as.matrix(density_obj)))
+
+# Plot the density with ggplot2
+ggplot(density_df, aes(x = Var1, y = Var2, fill = Freq)) +
+  geom_raster() +
+  scale_fill_viridis_c() + # For better color scaling, using viridis color map
+  coord_fixed() +
+  labs(
+    title = "Density of Spatial Point Pattern",
+    subtitle = glue("Chisq quadrat test: {format(quadrat_test$p.value, digits = 2, scientific = TRUE)}"),
+    x = "X Coordinate",
+    y = "Y Coordinate",
+    fill = "Density"
+  ) +
+  theme_minimal()
+```
+
+## Label transfer probability in space
+```{r}
+df <- as.data.frame(colData(sce))
+df <- df[sample(rownames(df)),]
+
+ ggplot(df, aes(x = CenterX_global_px, y = CenterY_global_px, color = label_prob)) + 
+  scale_color_gradientn(colours = c("navy","red4")) +
+  ggrastr::rasterise(geom_point(size = 0.1, shape = 16), dpi = 800) +
+  theme_bw() + 
+  theme(panel.grid = element_blank(), text = element_text(colour = "black", size = 20), 
+        axis.text = element_text(colour = "black", size = 15)) +
+  labs(x = "x_px", y = "y_px") +
+  coord_equal() +
+  labs(color = "IST prob")
 ```
 
 ## Clusters proportion/Sample

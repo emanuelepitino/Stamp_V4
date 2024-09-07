@@ -31,9 +31,9 @@ source(glue("{dir}/scripts/misc/BIN.R"))
 
 ## Load data
 ```{r}
-myeloid <- qread(glue("{proj_dir}/data/stamp_5/processed/Lvl2/Myeloid/Myeloid/lvl2_sce.qs"))
-B <- qread(glue("{proj_dir}/data/stamp_5/processed/Lvl2/B/B/lvl2_sce.qs"))
-T <- qread(glue("{proj_dir}/data/stamp_5/processed/Lvl2/T/lvl2_sce.qs"), nthreads = 5)
+myeloid <- qread(glue("{proj_dir}/data/stamp_5/processed/Lvl2/Myeloid/Myeloid/lvl2_sce.qs"), nthreads = 8)
+B <- qread(glue("{proj_dir}/data/stamp_5/processed/Lvl2/B/B/lvl2_sce.qs"), nthreads = 8)
+T <- qread(glue("{proj_dir}/data/stamp_5/processed/Lvl2/T/lvl2_sce.qs"), nthreads = 8)
 ```
 
 ```{r}

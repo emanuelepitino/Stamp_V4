@@ -102,11 +102,11 @@ feats <- c("CD3E","CD3D","CD247","CD4","CCR7","SELL","TCF7","IL7R","GATA3","FOXP
 ```
 
 ```{r}
-create_plots2(sce, "label", intersect(top_markers$gene, rownames(sce)), pal)
+create_plots2(sce, "label", intersect(top_markers$gene, rownames(sce)))
 ```
 
 ```{r}
-create_plots2(sce, "label", intersect(feats, rownames(sce)), pal)
+create_plots2(sce, "label", intersect(feats, rownames(sce)))
 ```
 
 # Annotation
@@ -146,7 +146,7 @@ names(pal_lvl2) <- unique(sce$lvl2)
 
 ```{r}
 wh(30,15)
-create_plots2(sce, "lvl2", intersect(feats, rownames(sce)), pal_lvl2)
+create_plots2(sce, "lvl2", intersect(feats, rownames(sce)))
 ```
 
 ```{r}
@@ -177,10 +177,10 @@ if(!dir.exists(paste0(outdir))){
   dir.create(outdir, recursive = TRUE)
 }
 pdf(paste0(outdir,"/lvl2.pdf"), width = 15, height = 10)
-create_plots2(sce, "label", intersect(top_markers$gene, rownames(sce)), pal)
+create_plots2(sce, "label", intersect(top_markers$gene, rownames(sce)))
 qc_metrics_label
-create_plots2(sce, "label", intersect(feats, rownames(sce)), pal)
-create_plots2(sce, "lvl2", intersect(feats, rownames(sce)), pal_lvl2)
+create_plots2(sce, "label", intersect(feats, rownames(sce)))
+create_plots2(sce, "lvl2", intersect(feats, rownames(sce)))
 qc_metrics_anno
 dev.off()
 ```

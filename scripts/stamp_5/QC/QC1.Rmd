@@ -35,7 +35,7 @@ source(glue("{dir}/scripts/misc/BIN.R"))
 ## Load data
 ```{r}
 res_dir <- paste0(proj_dir, "/data/stamp_5/processed")
-sce <- HDF5Array::loadHDF5SummarizedExperiment(glue("{res_dir}/raw_sce"))
+sce <- qread(glue("{res_dir}/raw_sce.qs"), nthreads = 8)
 ```
 
 
@@ -290,7 +290,7 @@ sce_filt
 ```
 
 ```{r}
-HDF5Array::saveHDF5SummarizedExperiment(sce_filt, dir =  glue("{res_dir}/sce_filt"))
+qsave(sce_filt, glue("{res_dir}/sce_filt.qs"), nthreads  = 8)
 ```
 
 ```{r}
