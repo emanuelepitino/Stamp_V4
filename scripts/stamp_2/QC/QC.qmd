@@ -118,7 +118,7 @@ gg_hist <- function(df, outliers, var, title) {
 suppressWarnings({
 df <- as.data.frame(colData(sce))
 
-df <- df[df$sum > 100 & df$detected > 100 & df$Area.um2 > 30,]
+# df <- df[df$sum > 100 & df$detected > 100 & df$Area.um2 > 30,] ???
 
 gg_qc_metrics <- wrap_plots(
                 gg_hist(df, discard_sum, "sum", "nCounts"),

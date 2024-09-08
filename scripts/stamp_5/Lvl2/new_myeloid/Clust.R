@@ -19,11 +19,11 @@ dir <- glue("{here()}")
 source(glue("{dir}/scripts/misc/paths.R"))
 source(glue("{dir}/scripts/misc/BIN.R"))
 # Load data
-res_dir <- paste0(proj_dir, "/data/stamp_5/processed")
-sce <- qread(glue("{res_dir}/proc_sce.qs"))
+sub <- "Myeloid"
+scedir <- glue("{proj_dir}/data/stamp_5/processed/Lvl2/{sub}")
+sce <- qread(glue("{scedir}/proc_sce.qs"), nthreads = 8)
+#sce <- sce[,sample(colnames(sce),10000)]
 sce
-# sce <- sce[,1:1000]
-
 # Build SNN graph 
 #### #### #### #### #### #### #### #### #### #### #### #### #### #### #### #### 
 snn.gr <- buildSNNGraph(sce, type = "jaccard",
@@ -40,4 +40,4 @@ table(sce$label)
 plotReducedDim(sce, "UMAP", colour_by ="label",text_by = "label", scattermore = T)
 
 # Save
-qsave(sce, glue("{res_dir}/clust_sce.qs"), nthreads = 8)
+qsave(sce, glue("{scedir}/clust_sce.qs"), nthreads = 8)

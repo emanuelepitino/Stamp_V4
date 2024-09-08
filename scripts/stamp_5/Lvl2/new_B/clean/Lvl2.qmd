@@ -1,0 +1,147 @@
+---
+title: "Level 2 annotation - stamp5"
+subtitle: "Emanuele Pitino"
+date: "`r Sys.Date()`"
+format: 
+  html:
+    theme: superhero
+    smooth-scroll: true
+    code-fold: true
+    self-contained: true
+    toc: true
+    toc_float: 
+      collapsed: false
+      smooth_scroll: true
+params:
+  sample: !expr NA
+editor: source
+editor_options: 
+  chunk_output_type: console
+execute:
+  echo: true
+---
+```{r}
+suppressPackageStartupMessages({
+library(SingleCellExperiment)
+library(tidyverse)
+library(dplyr)
+library(here)
+library(scater)
+library(scuttle)
+library(glue)
+library(qs)
+library(parallel)
+library(scran)
+library(BiocParallel)
+library(BiocNeighbors)
+library(BiocSingular)
+library(data.table)
+})
+```
+
+```{r}
+dir <- glue("{here()}")
+source(glue("{dir}/scripts/misc/paths.R"))
+source(glue("{dir}/scripts/misc/BIN.R"))
+```
+
+
+```{r}
+sub <- "B"
+res_dir <- glue("{proj_dir}/data/stamp_5/processed/Lvl2/{sub}")
+sce <- qread(glue("{res_dir}/clust_sce.qs"), nthreads = 8)
+```
+
+
+```{r}
+pal <- Polychrome::createPalette(26,c("#99FFFF", "#FF99FF", "#FFFF99"))
+names(pal) <- unique(sce$label)
+```
+
+## Clusters analysis
+```{r}
+markers <- scoreMarkers(sce, sce$label, BPPARAM = bp)
+
+feat <- lapply(markers, function(df) {
+  as.data.frame(df) %>%
+    arrange(desc(median.logFC.detected)) %>%
+    head(15) %>%
+    rownames()
+})
+feat <- unique(unlist(feat))
+
+gg_clust1 <- create_plots2(sce, "label", c("IGKC","IGHM","IGHG1"))
+```
+
+
+```{r}
+df <- as.data.frame(colData(sce))
+gg_clust2 <- wrap_plots(
+    plot_density(df, "sum", "label", pal, "Counts",200),
+    plot_density(df, "detected", "label", pal, "Features",150),
+    plot_density(df, "cell_area", "label", pal, "Cell Area",500),
+    plot_density(df, "nucleus_area", "label", pal, "Nucleus Area",500),
+    ncol = 2, nrow = 2) +
+plot_annotation(tag_levels = "A")
+```
+
+## Annotation
+```{r}
+sce$lvl2 <- ""
+sce$lvl2[sce$label == "1"] <- "Naive B"
+sce$lvl2[sce$label == "2"] <- "Naive B"
+sce$lvl2[sce$label == "4"] <- "Naive B"
+sce$lvl2[sce$label == "5"] <- "Naive B"
+sce$lvl2[sce$label == "6"] <- "Class-Switched B"
+sce$lvl2[sce$label == "3"] <- "pDCs"
+```
+
+
+```{r}
+pal_lvl2 <- Polychrome::createPalette(26,c("#99FFFF", "#FF99FF", "#FFFF99"))
+names(pal_lvl2) <- unique(sce$lvl2)
+```
+
+# Find new markers for lvl1
+```{r}
+markers <- scoreMarkers(sce, sce$lvl2, BPPARAM = bp)
+
+feat <- lapply(markers, function(df) {
+  as.data.frame(df) %>%
+    arrange(desc(median.logFC.detected)) %>%
+    head(5) %>%
+    rownames()
+})
+feat <- unique(unlist(feat))
+
+gg_anno1 <- create_plots2(sce, "lvl2", feat)
+```
+
+```{r}
+df <- as.data.frame(colData(sce))
+gg_anno2 <- wrap_plots(
+    plot_density(df, "sum", "lvl2", pal_lvl2, "Counts",200),
+    plot_density(df, "detected", "lvl2", pal_lvl2, "Features",150),
+    plot_density(df, "cell_area", "lvl2", pal_lvl2, "Cell Area",500),
+    plot_density(df, "nucleus_area", "lvl2", pal_lvl2, "Nucleus Area",500),
+    ncol = 2, nrow = 2) +
+plot_annotation(tag_levels = "A")
+```
+
+```{r}
+outdir <- glue("{plt_dir}/stamp_5/Lvl2/{sub}")
+if(!dir.exists(paste0(outdir))){
+  dir.create(outdir)
+}
+pdf(paste0(outdir,"/lvl2.pdf"), width = 12, height = 8)
+gg_clust1
+gg_clust2
+gg_anno1
+gg_anno2
+dev.off()
+```
+
+
+```{r}
+qsave(sce, glue("{res_dir}/lvl2_sce.qs"), nthreads = 8)
+```
