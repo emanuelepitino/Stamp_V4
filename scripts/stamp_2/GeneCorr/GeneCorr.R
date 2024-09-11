@@ -75,8 +75,8 @@ df <- merge(agg_cs, agg_fl, by = c("gene", "variable"), all = TRUE)
 ggplot(df, aes(x = flex, y = cosmx)) +
   geom_point(shape = 16, size = 0.6, alpha = 0.8) +
   ggpubr::stat_cor(method = "spearman", label.x = -3, label.y = 2) + 
-  scale_y_log10(labels = label_log()) +  #
-  scale_x_log10(labels = label_log()) +
+  scale_y_log10(labels = scientific_10()) +  #
+  scale_x_log10(labels = scientific_10()) +
   geom_abline(slope = 1, x = 0, color = "red4", linetype = "dashed") +
   labs(title = "LnCAP") +
   theme_bw() +

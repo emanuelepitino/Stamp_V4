@@ -77,8 +77,15 @@ sce$label[sce$label == "c"] <- "LnCAP"
 
 sce$label <- factor(sce$label, levels = c("SKBR3","MCF7","LnCAP"))
 #pal <- Polychrome::createPalette(26, c("#fc6060", "#74f774", "#7c7cfc"))
-pal <- c("#fc6060", "#74f774", "#7c7cfc")
+pal <- Polychrome::createPalette(26,c("#99FFFF", "#FF99FF", "#FFFF99"))
 names(pal) <- unique(sce$label)
+```
+
+# Save the sce with assigned IST info before filtering for prob < 0.8 to plot supp fig 1
+```{r}
+dir <- glue("{proj_dir}/data/{stamp}/processed/final/")
+dir.create(dir, showWarnings = F)
+qsave(sce,glue("{dir}/sce_{sample}.qs"), nthreads = 8)
 ```
 
 ## Remove cells with transfer prob < 0.8
@@ -211,28 +218,36 @@ mtx_scaled <- z(x)
 Plot
 
 ```{r}
-# Perform hierarchical clustering on euclidean distance matrix with "average" method
-column_dist_euclidean <- dist(mtx_scaled, method = "euclidean")
-column_hclust_complete <- hclust(column_dist_euclidean, method = "average")
+library(reshape2)
+library(ggdendro)
+
 colnames(mtx_scaled) <- c("SKBR3", "MCF7", "LnCAP")
 
-mtx_scaled <- mtx_scaled[, ncol(mtx_scaled):1]
-# Create the heatmap
-color_function <- circlize::colorRamp2(c(min(mtx_scaled), 0, max(mtx_scaled)), c("navy", "white", "red"))
-hm <- ComplexHeatmap::Heatmap(t(mtx_scaled),
-              name = "expression",
-              cluster_rows = F,
-              cluster_columns = as.dendrogram(column_hclust_complete),
-              show_row_names = TRUE,
-              show_column_names = TRUE,
-              show_row_dend = FALSE,
-              show_column_dend = FALSE,
-              col = color_function,
-              row_names_side = "left",
-              height = unit(4,"cm"),
-              column_names_gp = grid::gpar(fontsize = 8))
+# Perform hierarchical clustering on columns
+column_dist_euclidean <- dist(t(mtx_scaled), method = "euclidean")  # Use transpose to cluster columns
+column_hclust_complete <- hclust(column_dist_euclidean, method = "average")
 
-hm
+# Reorder the columns based on clustering
+ordered_columns <- column_hclust_complete$order
+mtx_scaled_ordered <- mtx_scaled[, ordered_columns]
+colnames(mtx_scaled_ordered) <- colnames(mtx_scaled)[ordered_columns]
+
+# Convert the matrix into a format suitable for ggplot
+mtx_melted <- melt(t(mtx_scaled_ordered))
+mtx_melted$Var1 <- factor(mtx_melted$Var1, levels = c("SKBR3", "MCF7", "LnCAP"))
+# Create the heatmap using ggplot2
+hm <- ggplot(mtx_melted, aes(Var1, Var2, fill = value)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "navy", mid = "white", high = "red", midpoint = 0, name = "expression") +
+  theme_minimal() +
+  theme(
+ #   axis.text.x = element_text(angle = 90, hjust = 1, size = 15),
+    axis.text.y = element_text(size = 15),
+    axis.title = element_blank(),
+    legend.title = element_blank(),
+    legend.text = element_text(size = 12)
+  ) +
+  labs(x = "", y = "") 
 ```
 
 ```{r}
@@ -277,43 +292,10 @@ dev.off()
 ```
 
 ```{r}
-library(spatstat)
-
-# Assume `ppp_object` is your point pattern object (class 'ppp')
-
-# Generate an envelope for the K-function using Monte Carlo simulations
-envelope_K <- envelope(ppp_object, Kest, nsim=99)
-
-# Manually calculate the p-value
-n_above <- sum(envelope_K$obs > envelope_K$lo)
-n_below <- sum(envelope_K$obs < envelope_K$hi)
-p_value <- min(n_above, n_below) / length(envelope_K$obs)
-
-# Extract data for ggplot
-envelope_df <- data.frame(
-  r = envelope_K$r,           # Distance values
-  obs = envelope_K$obs,       # Observed K-function
-  lo = envelope_K$lo,         # Lower envelope
-  hi = envelope_K$hi          # Upper envelope
-)
-
-# Plot the K-function with the envelope and p-value annotation
-ggplot(envelope_df, aes(x = r)) +
-  geom_line(aes(y = obs), color = "blue", size = 1) +             # Observed K-function
-  geom_ribbon(aes(ymin = lo, ymax = hi), fill = "gray80") +       # Envelope
-  geom_line(aes(y = lo), linetype = "dashed", color = "red") +    # Lower envelope
-  geom_line(aes(y = hi), linetype = "dashed", color = "red") +    # Upper envelope
-  labs(
-    title = "Ripley's K-function with Monte Carlo Envelope",
-    x = "Distance r",
-    y = "K(r)"
-  ) +
-  annotate("text", x = max(envelope_df$r) * 0.8, y = max(envelope_df$obs), 
-           label = paste("p-value:", round(p_value, 4)), 
-           size = 5, color = "black", hjust = 0) +                # Annotate p-value
-  theme_minimal()
-
+saveRDS(gg_um, glue("{proj_dir}/figures/supp1/rds/um.rds"))
+saveRDS(hm, glue("{proj_dir}/figures/supp1/rds/hm.rds"))
 ```
+
 
 ```{r}
 sessionInfo()

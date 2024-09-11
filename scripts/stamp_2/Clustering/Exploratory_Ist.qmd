@@ -52,8 +52,6 @@ source(glue("{dir}/scripts/misc/BIN.R"))
 stamp <- "stamp_2"
 sample <- "MIX"
 dir <- glue("{here()}")
-source(glue("{dir}/scripts/misc/paths.R"))
-source(glue("{dir}/scripts/misc/BIN.R"))
 
 res_dir <- glue("{proj_dir}/data/{stamp}/processed/{sample}")
 sce <- qread(glue("{res_dir}/PreProcNew.qs"), nthreads = 8)
@@ -380,6 +378,10 @@ saveRDS(hm, glue("{proj_dir}/figures/fig1/rds/hm.rds"))
 ```{r}
 dir <- glue("{proj_dir}/data/{stamp}/{sample}/Ist")
 qsave(sce, file = glue("{dir}/anno_sce.qs"), nthreads = 8)
+
+dir <- glue("{proj_dir}/data/{stamp}/processed/final/")
+dir.create(dir, showWarnings = F)
+qsave(sce,glue("{dir}/sce_{sample}.qs"), nthreads = 8)
 ```
 
 ```{r}
