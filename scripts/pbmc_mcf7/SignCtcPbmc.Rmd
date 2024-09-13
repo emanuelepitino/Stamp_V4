@@ -21,6 +21,9 @@ library(BiocNeighbors)
 library(BiocSingular)
 library(data.table)
 library(scales)
+library(matrixStats)
+library(reshape2)
+library(ggnewscale)  
 })
 ```
 
@@ -33,8 +36,13 @@ source(glue("{dir}/scripts/misc/BIN.R"))
 ```{r}
 res_dir <- paste0(proj_dir, "/data/pbmc_mcf7/")
 sce <- qread(glue("{res_dir}/annotated_pbmc_mcf7_ref.qs"), nthreads = 8)
+cosmx <- qread(glue("{proj_dir}/data/stamp_4/processed/qc_sce.qs"), nthreads = 8)
+
+int <- intersect(rownames(sce), rownames(cosmx))
+sce <- sce[int,]
 ```
 
+# Find markers
 ```{r}
 sce$cline <- as.factor(sce$cline)
 markers <- scoreMarkers(sce, sce$cline, lfc = 0.25, BPPARAM = bp)
@@ -63,24 +71,177 @@ markers$median.logFC.cohen <- round(markers$median.logFC.cohen, 2)
 markers$mean.logFC.cohen <- round(markers$mean.logFC.cohen, 2)
 ```
 
-
 ```{r}
 top <- markers %>%
             group_by(cluster) %>%
             slice_head(n = 20)
-feats <- top$gene
+feat <- top$gene
 ```
 
+# Heatmap
 ```{r}
-plotDots(sce, features = feats, group = "cline", scale =TRUE, center = TRUE) +
-    coord_flip() +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1, color = "black", size = 12), 
-          axis.text.y = element_text(color = "black"),
-          text = element_text(size = 20, color = "black")) 
+# Step 2: Extract log-normalized counts for the features of interest
+logc <- assay(sce, "logcounts")
+
+# Convert the matrix to a standard matrix and subset
+x <- as.matrix(logc[feat, ])
+
+# Step 3: Define the scaling function
+z <- function(x, th = 2.5) {
+    if (is.null(dim(x))) {
+        x[x < 0] <- 0
+        sd_val <- sd(x, na.rm = TRUE)
+        x <- x - mean(x, na.rm = TRUE)
+        if (sd_val != 0) x <- x / sd_val
+    } else {
+        # Ensure x is a matrix
+        x <- as.matrix(x)
+        mus <- colMeans(x, na.rm = TRUE)
+        sds <- matrixStats::colSds(x, na.rm = TRUE)
+        # Avoid division by zero
+        sds[sds == 0] <- 1
+        x <- sweep(x, 2, mus, `-`)
+        x <- sweep(x, 2, sds, `/`)
+    }
+    x[x > +th] <- +th
+    x[x < -th] <- -th
+    return(x)
+}
+
+# Step 4: Apply the scaling function
+mtx_scaled <- z(x)
+
+# Step 5: Order columns by 'cline'
+cline <- colData(sce)$cline
+
+# Ensure 'cline' is a factor
+cline <- factor(cline)
+
+# Create a data frame of cells with 'cline' information
+cell_df <- data.frame(
+  Cell = colnames(sce),
+  cline = cline
+)
+
+# Get the order of columns based on 'cline'
+cell_order <- order(cell_df$cline)
+
+# Reorder the scaled matrix accordingly
+mtx_scaled_ordered <- mtx_scaled[, cell_order]
+
+# Update column names
+colnames(mtx_scaled_ordered) <- colnames(mtx_scaled)[cell_order]
+
+# Update 'cline' to match the ordered cells
+cline_ordered <- cell_df$cline[cell_order]
+
+# Create a data frame with ordered cells and 'cline' information
+cell_cline_df <- data.frame(
+  Cell = colnames(mtx_scaled_ordered),
+  cline = cline_ordered
+)
+
+# Step 6: Prepare data for ggplot2
+mtx_scaled_ordered <- as.matrix(mtx_scaled_ordered)
+
+# Melt the matrix
+mtx_melted <- melt(mtx_scaled_ordered)
+
+# Rename variables for clarity
+colnames(mtx_melted) <- c("Gene", "Cell", "Expression")
+
+# Merge with 'cline' information
+mtx_melted <- merge(mtx_melted, cell_cline_df, by = "Cell")
+
+# Step 7: Add annotation data for 'cline'
+# Create annotation data frame
+annotation_df <- data.frame(
+  Cell = cell_cline_df$Cell,
+  Gene = 'cline_annotation',
+  Expression = NA,  
+  cline = cell_cline_df$cline
+)
+
+# Combine heatmap data and annotation data
+mtx_melted_full <- rbind(mtx_melted, annotation_df)
+
+# Step 8: Set factor levels
+# Order 'Gene' factor levels with 'cline_annotation' at the bottom
+gene_levels <- c(levels(factor(mtx_melted$Gene)), 'cline_annotation')
+mtx_melted_full$Gene <- factor(mtx_melted_full$Gene, levels = gene_levels)
+
+# Order 'Cell' factor levels based on the ordered cells
+mtx_melted_full$Cell <- factor(mtx_melted_full$Cell, levels = colnames(mtx_scaled_ordered))
+
+# Step 9: Create the heatmap with ggplot2
+
+# Get the levels of 'cline'
+cline_levels <- levels(cline_ordered)
+
+# Define colors for each 'cline' group
+cline_colors <- setNames(c("magenta", "orange"), cline_levels)
+
+# Create the heatmap
+hm <- ggplot() +
+  # Heatmap layer
+  geom_raster(
+    data = mtx_melted_full[mtx_melted_full$Gene != 'cline_annotation', ],
+    aes(x = Cell, y = Gene, fill = Expression)
+  ) +
+  scale_fill_gradient2(
+    low = "navy", mid = "white", high = "red", midpoint = 0,
+    name = "Expression"
+  ) +
+  # Add new fill scale for the annotation
+  ggnewscale::new_scale_fill() +
+  # Annotation layer
+  geom_tile(
+    data = mtx_melted_full[mtx_melted_full$Gene == 'cline_annotation', ],
+    aes(x = Cell, y = Gene, fill = cline)
+  ) +
+  # Define colors for 'cline' groups
+  scale_fill_manual(
+    values = cline_colors,
+    name = "Cell Line"
+  ) +
+  # Adjust themes and other settings
+  theme_minimal() +
+  theme(
+    axis.text.x = element_blank(),
+    axis.text.y = element_text(size = 8),
+    axis.title = element_blank(),
+    legend.title = element_blank(),
+    legend.text = element_text(size = 8),
+    panel.grid = element_blank(), 
+    panel.background = element_blank(),
+    plot.background = element_blank()
+  ) +
+  # Remove the 'cline_annotation' label from the y-axis
+  scale_y_discrete(labels = function(labels) {
+    labels[labels == 'cline_annotation'] <- ''
+    labels
+  }) +
+  labs(x = "", y = "")
+
+# Optional: Add vertical lines to separate 'cline' groups
+# Identify positions where 'cline' changes
+cline_changes <- which(diff(as.numeric(cline_ordered)) != 0)
+
+# Calculate positions for vertical lines
+x_positions <- cline_changes + 0.5
+
+# Add vertical lines to the heatmap
+hm <- hm + geom_vline(xintercept = x_positions, color = "black", linetype = "dashed")
+
+hm
 ```
 
+
+
 ```{r}
-ctc_sign <- markers$gene[markers$cluster == "MCF7"][1:100]
+pltdir <- glue("{proj_dir}/figures/fig4/rds")
+dir.create(pltdir, showWarnings = F)
+saveRDS(hm, file = glue("{pltdir}/gg_hm.rds"))
 ```
 
 

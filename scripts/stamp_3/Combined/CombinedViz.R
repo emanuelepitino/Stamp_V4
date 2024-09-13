@@ -5,6 +5,7 @@ suppressPackageStartupMessages({
   library(here)
   library(glue)
   library(qs)
+  library(ggpubr)
 })
 
 # setup
@@ -52,7 +53,8 @@ cd <- cd[!cd$sample %in% c("20K C", "20K N"), ]
 df <- cd
 
 # Invert the levels of the sample factor
-df$sample <- factor(df$sample, levels = rev(levels(factor(df$sample))))
+#df$sample <- factor(df$sample, levels = rev(levels(factor(df$sample))))
+df$sample <- factor(df$sample, levels = c("1000 C","500 C","250 C","100 C"))
 # Custom labels
 # Plot
 gg_pos <- ggplot(df, aes(x = CenterX_global_px, y = CenterY_global_px, color = sample)) + 
@@ -92,23 +94,25 @@ gg_cnumb
 df <- as.data.frame(table(cd$sample)) %>%
       mutate(InputCells = c(100,225,500,1000))
 
-correlation <- cor(df$InputCells, df$Freq, method = "pearson") # pearson
 gg_corr <- ggplot(df, aes(x = InputCells, y = Freq, color = Var1)) +
   scale_color_manual(values = psamp) +
   geom_abline(slope = 1, color = "black", linetype = "dotted", alpha = 1) +
   geom_point(size = 5, alpha = 0.8) +
   labs(
-    subtitle = paste("R²:", round(correlation,2)),
     x = "Input",
     y = "Recovered",
     color = "Sample"
   ) +
-  scale_x_log10(labels = scientific_10) +
-  scale_y_log10(labels = scientific_10) +
+  scale_x_log10(labels = scales::scientific) +
+  scale_y_log10(labels = scales::scientific) +
   theme_bw() +
-  scale_y_log10(labels = scientific_10) +
-  theme(panel.grid = element_blank())  +
-  theme(legend.position = "none")
+  theme(panel.grid = element_blank()) +
+  theme(legend.position = "none") +
+  stat_cor(method = "pearson", 
+           label.x.npc = "left", 
+           label.y.npc = "top", 
+           size = 5, 
+           color = "black")
 gg_corr
 ####### ####### ####### ####### ####### ####### ####### ####### ####### ####### #######
 
@@ -265,10 +269,9 @@ c$gene <- rownames(c)
 n$gene <- rownames(n)
 df <- merge(c, n, by = "gene", all = TRUE)
 
-
 gg_corr <- ggplot(df, aes(x = Cells, y = Nuclei)) + 
   ggrastr::rasterize(geom_point(shape = 16, size = 0.9, alpha = 0.8), dpi = 300) +
-  ggpubr::stat_cor(method = "spearman", label.x = -3, label.y = 80000, size = 5) + 
+  ggpubr::stat_cor(method = "pearson",label.x.npc = "left", label.y.npc = "top", size = 5) + 
   geom_abline(slope = 1, intercept = 0, color = "red4") +
   scale_x_continuous(labels = scientific_10)  +
   scale_y_continuous(labels = scientific_10) +

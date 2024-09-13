@@ -14,14 +14,18 @@ suppressPackageStartupMessages({
   library(BiocSingular)
 })
 
-stamp <- "stamp_3"
+stamp <- "stamp_1"
 sample <- "PBMCs"
 dir <- glue("{here()}")
 source(glue("{dir}/scripts/misc/paths.R"))
 source(glue("{dir}/scripts/misc/BIN.R"))
 
-res_dir <- glue("{proj_dir}/data/{stamp}/{sample}")
+res_dir <- glue("{proj_dir}/data/{stamp}")
 sce <- qread(glue("{res_dir}/qc_sce.qs"))
+sce
+
+
+sce <- sce[,sample(colnames(sce),250000)]
 sce
 
 counts <- t(counts(sce))
@@ -59,8 +63,7 @@ reducedDim(sce,"PCA") <- pc1$x
 reducedDim(sce,"UMAP") <- um1
 
 # Save plots
-pdf(glue("{plt_dir}/{stamp}/{sample}/PreProc.pdf"), width = 7, height = 5)
-elbow
+pdf(glue("{plt_dir}/{stamp}/PreProc.pdf"), width = 7, height = 5)
 plot(um1, pch = 16, cex = 0.1, col = "dodgerblue4")
 dev.off()
 

@@ -62,20 +62,27 @@ sub <- df[df$Mean.PanCK > 2500 & df$score > 0.2,]
 thr_a <- 5
 thr_c <- 6
 df_lab2 <- sub[log(sub$Area.um2) > thr_a & log(sub$sum) > thr_c, ]
+df_lab2$lab <- as.character(1:nrow(df_lab2))
 
 gg_ctc2p2 <- ggplot(sub, aes(x = log(Area.um2), y = log(sum))) + 
   ggrastr::rasterise(geom_point(shape = 16), dpi = 500) +
   scale_color_viridis_c(option = "H") +
-  geom_label_repel(data = df_lab2, aes(label = rownames(df_lab2)), 
-                   fill = NA, 
-                   direction = "both",
-                   size = 3, 
-                   box.padding = 0.5,
-                   point.padding = 0.3, 
-                   force = 1,
-                   force_pull = 0.5,
-                   max.overlaps = Inf,
-                   min.segment.length = 0) +
+  geom_label_repel(
+    data = df_lab2, 
+    aes(label = lab), 
+    fill = NA,                 
+    direction = "both", 
+    size = 5, 
+    box.padding = 0.5, 
+    point.padding = 0.3, 
+    force = 1, 
+    force_pull = 0.5, 
+    max.overlaps = Inf, 
+    min.segment.length = 0,
+    label.size = NA,
+    segment.size = 0.5,
+    segment.color = "grey"
+  ) +
   scale_size_continuous(range = c(0.1, 5)) +
   scale_color_viridis_c(option = "H") +
   geom_hline(yintercept = thr_c, color = "red", linetype = "dashed") +

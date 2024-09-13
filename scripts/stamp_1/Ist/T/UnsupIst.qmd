@@ -1,0 +1,164 @@
+---
+title: "Unsupervised clustering - InSituType - T subset"
+format: 
+  html:
+    code-fold: true
+    self-contained: true
+editor: source
+editor_options: 
+  chunk_output_type: console
+execute:
+  echo: true
+  fig-width: 16     
+  fig-height: 12 
+---
+
+### Libraries
+
+```{r}
+suppressPackageStartupMessages({
+library(SingleCellExperiment)
+library(dplyr)
+library(here)
+library(scater)
+library(scuttle)
+library(glue)
+library(qs)
+library(scran)
+library(BiocParallel)
+library(BiocNeighbors)
+library(BiocSingular)
+library(data.table)
+library(InSituType)
+})
+```
+
+### Data loading
+
+```{r}
+dir <- glue("{here()}")
+source(glue("{dir}/scripts/misc/paths.R"))
+source(glue("{dir}/scripts/misc/BIN.R"))
+```
+
+```{r}
+stamp <- "stamp_3"
+sample <- "PBMCs"
+sub <- "T"
+res_dir <- glue("{proj_dir}/data/{stamp}/{sample}")
+sce <- qread(glue("{res_dir}/sce_ist1.qs"), nthreads = 8)
+sce <- sce[,sce$lvl1 == sub]
+sce
+```
+
+### Feature selection
+
+In this second round of clustering, we will refine our feature selection process as follows: starting with the profiles obtained from the InSituType clustering, we will:
+
+1.  Log-normalize the profiles.
+2.  Calculate pairwise fold changes by comparing each cluster's mean expression to the mean of the other clusters.
+3.  Apply a log fold change (logFC) threshold to select significant features.
+
+These selected features will be used to subset the matrix, which will then be used for the next round of InSituType clustering.
+
+```{r}
+unsup <- qread(glue("{res_dir}/Ist/unsup.qs")) # read data
+norm <- unsup$profiles /  Matrix::colSums(unsup$profiles) # normalize
+lognorm <- log1p(norm) # log transformation
+```
+
+```{r}
+#result <- apply(lognorm, 1, function(x) log(x / mean(x[-1])))
+
+result <- lognorm  # Create a copy of the matrix to store results
+
+for (i in 1:nrow(lognorm)) {
+  for (j in 1:ncol(lognorm)) {
+    result[i, j] <- log(lognorm[i, j] / mean(lognorm[i, -j]))
+  }
+}
+```
+
+#### Subset T clusters (b & e)
+
+```{r}
+result <- result[,c("b","e")]
+```
+
+```{r}
+feat <- rownames(result)[apply(result, 1, function(x) any(x > 0.3))]
+```
+
+#### Run IST unsupervised clustering
+
+```{r}
+counts <- t(counts(sce)[feat,]) # subset to keep marker genes
+neg <- t(counts(altExp(sce,"negprobes")))
+negmean <- Matrix::rowMeans(neg)
+```
+
+```{r}
+suppressMessages({
+unsup <- insitutype(
+  x = counts,
+  neg = negmean,
+  bg = NULL,
+  n_clusts = c(3:20),
+  reference_profiles = NULL, # for Unsupervised
+)
+})
+```
+
+#### Profiles HeatMap
+
+```{r}
+suppressMessages({
+  
+  hm <- heatmap(sweep(unsup$profiles, 1, 
+                    pmax(apply(unsup$profiles, 1, max), .2), "/"), scale = "none",
+        main = "Cluster mean expression profiles")
+  hm
+})
+```
+
+#### FlightPath
+
+```{r}
+fp_layout <- flightpath_layout(logliks = unsup$logliks, profiles = unsup$profiles)
+
+gg_fp <- ggplot(fp_layout$cellpos, aes(x = x, y = y, color = fp_layout$clust)) +
+  ggrastr::rasterise(geom_point(size = 0.1, shape = 16), dpi = 800) +
+  scale_color_manual(values = palette_general()) +
+  theme_bw() +
+    theme(text = element_text(size = 15, color = "black"),
+          axis.text = element_text(size = 10, color = "black"),
+          panel.grid = element_blank(),
+          axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(color = "Cluster", title = glue("FlightPath - {stamp} - {sample} - {sub}")) +
+  guides(color = guide_legend(override.aes = list(size = 4))) 
+
+gg_fp
+```
+
+#### Save
+
+```{r}
+plot_dir <- glue("{plt_dir}/{stamp}/{sample}/Ist/{sub}")
+dir.create(plot_dir, showWarnings = F, recursive = T)
+
+pdf(glue("{plot_dir}/Unsup.pdf"), width = 10, height = 10)
+heatmap(sweep(unsup$profiles, 1, pmax(apply(unsup$profiles, 1, max), .2), "/"), scale = "none",
+        main = glue("Cluster expression profiles - {stamp} - {sample} - {sub}"))
+gg_fp
+dev.off()
+```
+
+```{r}
+dir <- glue("{proj_dir}/data/{stamp}/{sample}/Ist/{sub}")
+dir.create(dir, showWarnings = F, recursive = T)
+qsave(unsup, file = glue("{dir}/unsup.qs"))
+```
+
+```{r}
+sessionInfo()
+```

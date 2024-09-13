@@ -14,14 +14,21 @@ suppressPackageStartupMessages({
   library(BiocSingular)
 })
 
-stamp <- "stamp_3"
-sample <- "PBMCs"
 dir <- glue("{here()}")
 source(glue("{dir}/scripts/misc/paths.R"))
 source(glue("{dir}/scripts/misc/BIN.R"))
 
+stamp <- "stamp_3"
+sample <- "PBMCs"
+sub <- "B"
 res_dir <- glue("{proj_dir}/data/{stamp}/{sample}")
-sce <- qread(glue("{res_dir}/qc_sce.qs"))
+sce <- qread(glue("{res_dir}/sce_ist1.qs"), nthreads = 8)
+sce <- sce[,sce$lvl1 == sub]
+
+# markers to subset for (feature selection)
+dir <- glue("{proj_dir}/data/{stamp}/{sample}/Ist/{sub}")
+feat <-qread(glue("{dir}/feat.qs"))
+sce <- sce[feat,]
 sce
 
 counts <- t(counts(sce))
@@ -47,6 +54,18 @@ variance_df <- data.frame(
   PC = seq_along(proportion_variance_explained),
   ProportionVarianceExplained = proportion_variance_explained
 )
+# 4. Plot the elbow plot 
+elbow <- ggplot(variance_df, aes(x = PC, y = ProportionVarianceExplained)) +
+  geom_point() +
+  geom_line() +
+  xlab("Principal Component") +
+  ylab("Proportion of Variance Explained") +
+  ggtitle(glue("{stamp} - {sample} - {sub}")) +
+  geom_vline(xintercept = 3, linetype = "dashed", color = "red") + 
+  theme_minimal()
+
+# Keep a subset of principal components
+pc1$x <- pc1$x[,1:3]
 
 # Run UMAP
 um1 <- uwot::umap(pc1$x, n_neighbors = 40, spread = 1, min_dist = 0.1, metric = "cosine")
@@ -59,10 +78,14 @@ reducedDim(sce,"PCA") <- pc1$x
 reducedDim(sce,"UMAP") <- um1
 
 # Save plots
-pdf(glue("{plt_dir}/{stamp}/{sample}/PreProc.pdf"), width = 7, height = 5)
+dir <- glue("{plt_dir}/{stamp}/{sample}/{sub}")
+dir.create(dir, showWarnings = F)
+pdf(glue("{dir}/PreProc.pdf"), width = 7, height = 5)
 elbow
 plot(um1, pch = 16, cex = 0.1, col = "dodgerblue4")
 dev.off()
 
 # Save data
-qsave(sce, file = glue("{res_dir}/PreProcNew.qs"))
+dir <- glue("{res_dir}/Ist/{sub}")
+dir.create(dir, showWarnings = F)
+qsave(sce, file = glue("{dir}/PreProcNew.qs"))

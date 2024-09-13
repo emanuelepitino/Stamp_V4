@@ -1,20 +1,9 @@
-# Create sce 
-#Libraries
 suppressPackageStartupMessages({
-  library(SingleCellExperiment)
-  library(tidyverse)
   library(dplyr)
-  library(patchwork)
-  library(grid)
-  library(ggpubr)
-  library(here)
-  library(scater)
-  library(scuttle)
-  library(glue)
-  library(scran)
-  library(patchwork)
-  library(qs)
-  library(data.table)
+  library(Matrix)
+  library(HDF5Array)
+  library(SparseArray)
+  library(SingleCellExperiment)
 })
 
 dir <- glue("{here()}/scripts")
@@ -22,24 +11,26 @@ dir <- glue("{here()}/scripts")
 source(glue("{dir}/misc/paths.R"))
 source(glue("{dir}/misc/BIN.R"))
 
-data_dir <- glue("{proj_dir}/data/stamp_1/raw/raw_proc")
-counts <- qread(glue("{data_dir}/counts_unfiltered.qs"), nthreads = 5)
-negcounts <-  qread(glue("{data_dir}/negcounts_unfiltered.qs"), nthreads = 5)
-falsecounts <-  qread(glue("{data_dir}/falsecounts_unfiltered.qs"), nthreads = 5)
-md <-  qread(glue("{data_dir}/metadata_unfiltered.qs"), nthreads = 5)
+# # loading
+ dir <- glue("{proj_dir}/data/stamp_1/raw/PBMCs/PBMCs")
+ f <- \(.) file.path(dir, paste0("PBMCs_", .))
 
-sce <- SingleCellExperiment(
-  assays = list(counts = t(counts)),
-  colData = md
-)
+y <- readSparseCSV(f("exprMat_file.csv.gz"), transpose=TRUE)
+cd <- read.csv(f("metadata_file.csv.gz"))
 
-metadata(sce)$negcounts <- negcounts
-metadata(sce)$falsecounts <- falsecounts
+# coercion
+ y <- as(y[-1, ], "dgCMatrix")
+ colnames(y) <- cd$cell
+ 
+ gs <- rownames(y)
+ np <- grep("Negative", gs)
+ fc <- grep("SystemControl", gs)
+ 
+ as <- list(counts=y[-c(np, fc), ])
+ ae <- list(
+     negprobes=SingleCellExperiment(list(counts=y[np, ])),
+     falsecode=SingleCellExperiment(list(counts=y[fc, ])))
+# 
+sce <- SingleCellExperiment(as, colData=cd, altExps=ae)
 
 qsave(sce, file = glue("{proj_dir}/data/stamp_1/raw/raw_proc/raw_sce.qs"), nthreads = 8)
-
-
-
-
-
-

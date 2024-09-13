@@ -42,9 +42,9 @@ source(glue("{dir}/scripts/misc/BIN.R"))
 ```
 
 ```{r}
-stamp <- "stamp_3"
+stamp <- "stamp_1"
 sample <- "PBMCs"
-res_dir <- glue("{proj_dir}/data/{stamp}/{sample}")
+res_dir <- glue("{proj_dir}/data/{stamp}")
 sce <- qread(glue("{res_dir}/PreProcNew.qs"), nthreads = 8)
 ```
 
@@ -92,7 +92,7 @@ unsup <- ist(sce, 3:10)
 #### Save
 
 ```{r}
-dir <- glue("{proj_dir}/data/{stamp}/{sample}/Ist")
+dir <- glue("{proj_dir}/data/{stamp}/Ist")
 dir.create(dir, showWarnings = F, recursive = T)
 qsave(unsup, file = glue("{dir}/unsup.qs"))
 ```

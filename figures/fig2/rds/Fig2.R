@@ -1,7 +1,7 @@
 library(ggplot2)
 library(patchwork)
-library(ComplexHeatmap)
 library(grid)
+library(glue)
 
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
@@ -24,11 +24,11 @@ library(extrafont)
 
 # plot theme
 common_theme <- theme(
-  axis.text = element_text(size = 10, color = "black", family = "Times New Roman"),     
-  axis.title = element_text(size = 17, color = "black", family = "Times New Roman"),   
+  axis.text = element_text(size = 18, color = "black", family = "Times New Roman"),     
+  axis.title = element_text(size = 22, color = "black", family = "Times New Roman"),   
   plot.title = element_text(size = 25, color = "black", family = "Times New Roman"),   
-  legend.text = element_text(size = 12, color = "black", family = "Times New Roman"),                  
-  legend.title = element_text(size = 13, color = "black", family = "Times New Roman"),
+  legend.text = element_text(size = 18, color = "black", family = "Times New Roman"),                  
+  legend.title = element_text(size = 22, color = "black", family = "Times New Roman"),
   panel.grid = element_blank()
 )
 # apply the same theme
@@ -64,6 +64,6 @@ fig2 <- wrap_plots(p1,p2, nrow = 2) +
 
 dir <- glue("./../raw")
 dir.create(dir, showWarnings = F)
-pdf(file = glue("{dir}/fig2.pdf"), width = 22, height = 15)
+pdf(file = glue("{dir}/fig2.pdf"), width = 25, height = 15)
 fig2
 dev.off()

@@ -3,6 +3,7 @@ output: html_document
 editor_options: 
   chunk_output_type: console
 ---
+
 ```{r}
 suppressPackageStartupMessages({
 library(SingleCellExperiment)
@@ -20,9 +21,10 @@ library(BiocNeighbors)
 library(BiocSingular)
 library(data.table)
 library(InSituType)
-library(ROGUE)
 })
 ```
+
+### Libraries
 
 ```{r}
 dir <- glue("{here()}")
@@ -30,19 +32,25 @@ source(glue("{dir}/scripts/misc/paths.R"))
 source(glue("{dir}/scripts/misc/BIN.R"))
 ```
 
+### Data loading
 
 ```{r}
-res_dir <- paste0(proj_dir, "/data/stamp_1/processed")
-sce <- qread(glue("{res_dir}/proc_sce.qs"), nthreads = 8)
+stamp <- "stamp_3"
+sample <- "PBMCs"
+res_dir <- glue("{proj_dir}/data/{stamp}/{sample}")
+sce <- qread(glue("{res_dir}/PreProcNew.qs"), nthreads = 8)
 unsup <- qread(glue("{res_dir}/Ist/unsup.qs"))
 ```
+
+### QC on Unsup clustering
+
+unassigned cells with assigned probability \< 0.8
 
 ```{r}
 sce$clust <- unsup$clust
 sce$prob <- unsup$prob
 sce$clust[sce$prob < 0.8] <- "Unassigned"
 ```
-
 
 ```{r}
 pal <- palette_general()
@@ -51,8 +59,9 @@ names(pal) <- unique(sce$clust)
 ```
 
 ## Differential expression
+
 ```{r}
-sce <- logNormCounts(sce, BPPARAM = bp)
+#sce <- logNormCounts(sce, BPPARAM = bp)
 sce$clust <- as.factor(sce$clust)
 markers <- scoreMarkers(sce, sce$clust, BPPARAM = bp)
 ```
@@ -76,56 +85,75 @@ markers <- bind_rows(markers) %>%
   arrange(cluster,desc(median.logFC.detected), .by_group = TRUE) 
 
 markers$median.logFC.detected <- round(markers$median.logFC.detected, 2)
+markers <- markers %>% filter(median.logFC.detected > 0.10)
 ```
 
 ```{r}
-top <- markers %>%
-            group_by(cluster) %>%
-            slice_head(n = 10)
-feats <- top$gene
+library(openxlsx)
+
+# Assuming your data frame is named 'markers'
+# Split the data frame by 'cluster'
+clusters <- split(markers, markers$cluster)
+
+# Create a new Excel workbook
+wb <- createWorkbook()
+
+# Add each subset of the data frame as a separate sheet
+for (cluster_name in names(clusters)) {
+  addWorksheet(wb, cluster_name)
+  writeData(wb, sheet = cluster_name, clusters[[cluster_name]])
+}
+
+# Save the workbook to a file
+mrk_dir <- glue("{markers_dir}/{stamp}/{sample}")
+dir.create(mrk_dir, showWarnings = F, recursive = T)
+saveWorkbook(wb, file = glue("{mrk_dir}/markers_{sample}.xlsx"), overwrite = TRUE)
 ```
 
 ```{r}
+palette_general <- function(){
+  
+  set.seed(1234) # for reproducibility
+  color_palette <- Polychrome::createPalette(25, c("#fc6060", "#74f774", "#7c7cfc"))
+  return(unname(color_palette))
+}
+
 pal <- palette_general()
 names(pal) <- unique(sce$clust)
 ```
 
 ```{r}
-gg_combined <- create_plots2(sce, "clust", feats, pal)
+top <- markers %>%
+            group_by(cluster) %>%
+            arrange(desc(median.logFC.detected)) %>%
+            slice_head(n = 15)
+feats <- top$gene
+```
+
+```{r}
+gg_combined_clust <- create_plots2(sce, "clust", feats, pal)
 ```
 
 ```{r}
 df <- as.data.frame(colData(sce))
-wrap_plots(
-plot_density(df, "sum", "clust", pal, "nCounts",500),
-plot_density(df, "detected", "clust", pal, "nFeatures",300),
-plot_density(df, "Area.um2", "clust", pal, "Area",500),
-ncol =2)
+gg_dens_clust <- wrap_plots(
+                  plot_density(df, "sum", "clust", pal, "nCounts",500),
+                  plot_density(df, "detected", "clust", pal, "nFeatures",300),
+                  plot_density(df, "Area.um2", "clust", pal, "Area",500),
+                  ncol =2)
 ```
 
 ```{r}
-sce$label[sce$clust == "Unassigned"] <- "Unassigned"
-sce$label[sce$clust == "e"] <- "T"
-sce$label[sce$clust %in% c("a","d")] <- "B"
-sce$label[sce$clust == "d"] <- "Myeloid"
-sce$label[sce$clust == "b"] <- "Myeloid"
-sce$label[sce$clust == "a"] <- "Myeloid"
+sce$lvl1[sce$clust == "Unassigned"] <- "Unassigned"
+sce$lvl1[sce$clust %in% c("a","c","f","g")] <- "Myeloid"
+sce$lvl1[sce$clust == "d"] <- "B"
+sce$lvl1[sce$clust %in% c("b","e")] <- "T"
 ```
-
-```{r}
-colnames(unsup$profiles) <- c("Myeloid","Myeloid","B","Myeloid","T")
-```
-
-```{r}
- heatmap(sweep(unsup$profiles, 1, pmax(apply(unsup$profiles, 1, max), .2), "/"), scale = "none",
-        main = "Cluster mean expression profiles")
-```
-
 
 ## Differential expression
+
 ```{r}
-sce$label <- as.factor(sce$label)
-markers <- scoreMarkers(sce, sce$label, BPPARAM = bp)
+markers <- scoreMarkers(sce, sce$lvl1, BPPARAM = bp)
 ```
 
 ```{r}
@@ -147,6 +175,7 @@ markers <- bind_rows(markers) %>%
   arrange(cluster,desc(median.logFC.detected), .by_group = TRUE) 
 
 markers$median.logFC.detected <- round(markers$median.logFC.detected, 2)
+markers <- markers %>% filter(median.logFC.detected > 0)
 ```
 
 ```{r}
@@ -158,37 +187,33 @@ feats <- top$gene
 
 ```{r}
 pal <- palette_general()
-names(pal) <- unique(sce$label)
+names(pal) <- unique(sce$lvl1)
 ```
 
 ```{r}
-gg_combined <- create_plots2(sce, "label", feats, pal)
+gg_combined <- create_plots2(sce, "lvl1", feats, pal)
 ```
 
 ```{r}
 df <- as.data.frame(colData(sce))
 gg_density <- wrap_plots(
-                plot_density(df, "sum", "label", pal, "nCounts",500),
-                plot_density(df, "detected", "label", pal, "nFeatures",500),
-                plot_density(df, "Area.um2", "label", pal, "Area",500),
+                plot_density(df, "sum", "lvl1", pal, "nCounts",500),
+                plot_density(df, "detected", "lvl1", pal, "nFeatures",500),
+                plot_density(df, "Area.um2", "lvl1", pal, "Area",500),
                 ncol =2)
 ```
 
-
 ```{r}
-pdf(glue("{plt_dir}/stamp_1/Ist/Lvl1.pdf"), width = 10, height = 6)
+dir <- glue("{plt_dir}/{stamp}/{sample}")
+pdf(glue("{dir}/Ist/Lvl1.pdf"), width = 15, height = 8)
+gg_combined_clust
+gg_dens_clust
 gg_combined
 gg_density
 dev.off()
 ```
 
-
 ```{r}
-sce$lvl1 <- sce$label
 qsave(sce, glue("{res_dir}/sce_ist1.qs"), nthreads = 8)
+qsave(markers, glue("{res_dir}/markers_lvl1.qs"))
 ```
-
-
-
-
-

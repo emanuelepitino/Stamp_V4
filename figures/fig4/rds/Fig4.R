@@ -5,16 +5,14 @@ library(grid)
 library(scales)
 library(ggtext)
 library(extrafont)
-#loadfonts(device = "pdf")
-#extrafont::font_import()   
 
 # plot theme
 common_theme <- theme(
-  axis.text = element_text(size = 10, color = "black", family = "Times New Roman"),     
-  axis.title = element_text(size = 17, color = "black", family = "Times New Roman"),   
+  axis.text = element_text(size = 18, color = "black", family = "Times New Roman"),     
+  axis.title = element_text(size = 20, color = "black", family = "Times New Roman"),   
   plot.title = element_text(size = 25, color = "black", family = "Times New Roman"),   
-  legend.text = element_text(size = 12, color = "black", family = "Times New Roman"),                  
-  legend.title = element_text(size = 13, color = "black", family = "Times New Roman"),
+  legend.text = element_text(size = 15, color = "black", family = "Times New Roman"),                  
+  legend.title = element_text(size = 18, color = "black", family = "Times New Roman"),
   panel.grid = element_blank()
 )
 
@@ -29,10 +27,7 @@ list2env(setNames(lapply(rds_files, function(x) readRDS(x) & common_theme), name
 df_lab1 <- readRDS("./df_lab1.rds")
 df_lab2 <- readRDS("./df_lab2.rds")
 
-
-gg_ctc1
-
-gg_ctc2p2
+gg_hm <- gg_hm & theme(axis.text.y = element_text(size = 15))
 
 # read cd to add cell numbers
 cd1 <- qread(glue("{proj_dir}/data/stamp_4/processed/CTC1/ctc1_cd.qs"), nthreads = 8)
@@ -46,27 +41,26 @@ add_ctc_subtitle <- function(plot, data, ctc_column = "cline", ctc_value = "CTCs
   formatted_total <- format(total_count, big.mark = '.')
   percentage <- (ctc_count / total_count) * 100
     plot <- plot + 
-    labs(subtitle = glue("CTC: {ctc_count} / {formatted_total} - **{format(round(percentage,4), scientific = FALSE)}%**")) +
-    theme(plot.subtitle = element_markdown())
+    labs(subtitle = glue("CTC: {ctc_count} / {formatted_total} - {format(round(percentage,4), scientific = FALSE)}%")) +
+      theme(plot.subtitle = element_text(size = 25, color = "black", family = "Times New Roman"))
   return(plot)
 }
+
 # Apply the function to gg_ctc2p2 with cd2
-gg_ctc2p2 <- add_ctc_subtitle(gg_ctc2p2, cd2)
+gg_ctc2p2 <- add_ctc_subtitle(gg_ctc2p2, cd2) & common_theme
 # Apply the function to gg_ctc1 with cd1
-gg_ctc1 <- add_ctc_subtitle(gg_ctc1, cd1)
-
-gg_dot <- gg_dot & coord_flip()
-
+gg_ctc1 <- add_ctc_subtitle(gg_ctc1, cd1) & common_theme
 
 ctc2 <- wrap_plots(gg_ctc2,gg_ctc2p2, nrow = 1) 
-a <- wrap_plots(gg_dot, gg_ctc1, nrow = 1) 
+a <- wrap_plots(gg_hm, gg_ctc1, nrow = 1) 
 fig4 <- wrap_plots(a, ctc2, nrow = 2)
 
+
+a <- wrap_plots(gg_hm, gg_ctc2, nrow = 2) + plot_layout(heights = c(2,1))
+b <- wrap_plots(gg_ctc1,gg_ctc2p2,nrow = 2)
+fig4 <- wrap_plots(a,b, ncol = 2)
 dir <- "./../raw"
 dir.create(dir, showWarnings = F)
 pdf(glue("{dir}/fig4.pdf"), width = 22, height = 15)
 fig4
 dev.off()
-
-
-

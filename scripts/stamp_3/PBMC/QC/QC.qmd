@@ -1,10 +1,24 @@
 ---
-title: "QC stamp3 PBMCs"
-output: 
-  html_document:
-    code_folding: hide
-editor_options:
+title: "Quality Control - Stamp 3 - PBMCs"
+subtitle: "Emanuele Pitino"
+date: "`r Sys.Date()`"
+format: 
+  html:
+    theme: superhero
+    smooth-scroll: true
+    code-fold: true
+    self-contained: true
+    toc: true
+    toc_float: 
+      collapsed: false
+      smooth_scroll: true
+editor: source
+editor_options: 
   chunk_output_type: console
+execute:
+  echo: true
+  fig-width: 16     
+  fig-height: 12 
 ---
 
 ```{r setup, include=FALSE}
@@ -55,6 +69,43 @@ sce <- qread(glue("{data_dir}/raw_sce.qs"))
 sce <- sce[,sce$fov %in% c(514:769)]
 ```
 
+## Filter out cells under the gasket if any with outlier metrics
+
+```{r}
+
+cd <- as.data.frame(colData(sce))
+# Define the rotation angle in radians
+angle <- 2 * pi / 180
+
+# Create a rotation matrix
+rotation_matrix <- matrix(c(cos(angle), -sin(angle), sin(angle), cos(angle)), ncol = 2)
+
+# Apply the rotation to the points
+cd_rotated <- cd %>%
+  mutate(
+    rotated_coords = as.data.frame(t(rotation_matrix %*% t(as.matrix(select(cd, CenterX_global_px, CenterY_global_px))))),
+    CenterX_rotated = rotated_coords$V1,
+    CenterY_rotated = rotated_coords$V2
+  ) %>%
+  select(-rotated_coords)
+
+# Plot the rotated points
+ggplot(cd_rotated, aes(CenterX_rotated, CenterY_rotated, color = nCount_RNA)) + 
+  geom_point(shape = 16, size = 0.001) + 
+  scale_color_viridis_c() +
+  coord_equal()
+
+ggplot(cd_rotated, aes(CenterX_rotated, CenterY_rotated, color = nFeature_RNA)) + 
+  geom_point(shape = 16, size = 0.001) + 
+  scale_color_viridis_c() +
+  coord_equal()
+
+ggplot(cd_rotated, aes(CenterX_rotated, CenterY_rotated, color = Area.um2)) + 
+  geom_point(shape = 16, size = 0.001) + 
+  scale_color_viridis_c() +
+  coord_equal()
+```
+
 ```{r}
 sce <- addPerCellQCMetrics(sce)
 sce
@@ -67,7 +118,7 @@ sce
 discard_sum <- isOutlier(sce$sum, 
                          type = "both", 
                          log = TRUE,
-                         nmads = 2)
+                         nmads = 2.5)
 # Detected outliers
 discard_detected <- isOutlier(sce$detected, 
                          type = "both", 
@@ -127,7 +178,9 @@ gg_qc_metrics <- wrap_plots(
 
 ```{r}
 filt <- sce[,sce$nCount_RNA > as.numeric(attr(discard_sum, "threshold")["lower"]) &
+             sce$nCount_RNA < as.numeric(attr(discard_sum, "threshold")["higher"]) &
              sce$nFeature_RNA > as.numeric(attr(discard_detected, "threshold")["lower"]) &
+             sce$nFeature_RNA < as.numeric(attr(discard_detected, "threshold")["higher"]) &
              sce$Area.um2 > as.numeric(attr(discard_area, "threshold")["lower"]) &
              sce$Area.um2 < as.numeric(attr(discard_area, "threshold")["higher"])]
 ```
@@ -300,13 +353,6 @@ gg_border_eff_quantification <- gg_border_eff_quantification +
 ```
 
 ```{r}
-wrap_plots(gg_border_effect, gg_border_eff_quantification, nrow = 2) +
-  plot_annotation(title  = "Border effect - {stamp} - {sample}",
-    subtitle = paste("Median Cells removed/FOV:", median_removed_pct,"%"),
-    tag_levels = "A")
-```
-
-```{r}
 dir <- glue("{plt_dir}/stamp_3/{sample}")
 dir.create(dir, showWarnings = F)
 pdf(glue("{dir}/QC1.pdf"), width = 14, height = 4 )
@@ -314,11 +360,13 @@ gg_qc_metrics
 dev.off()
 ```
 
-```{r}
+```{r, fig.width=16, fig.height= 6}
 gg_qc_metrics
+```
 
+```{r}
 wrap_plots(gg_border_effect, gg_border_eff_quantification, nrow = 2) +
-  plot_annotation(title  = "Border effect - {stamp} - {sample}",
+  plot_annotation(title  = glue("Border effect - {stamp} - {sample}"),
     subtitle = paste("Median Cells removed/FOV:", median_removed_pct,"%"),
     tag_levels = "A") +
   plot_layout(heights = c(2,1))

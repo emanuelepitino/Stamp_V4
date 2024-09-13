@@ -35,17 +35,20 @@ df <- df[sample(rownames(df)),] # shuffle
 
 # Filter the data to label points above the horizontal line and to the right of the vertical line
 thr_pck <- 2500
-thr_score <- 0.2
+thr_score <- 0.12
 df_lab1 <- df[df$Mean.PanCK > thr_pck & df$score > thr_score, ]
 
+df_lab1$lab <- as.character(1:nrow(df_lab1))
 # Visualize
 gg_ctc1 <- ggplot(df, aes(x = score, y = Mean.PanCK, color = sum, size = Area.um2)) + 
   ggrastr::rasterise(geom_point(shape = 16), dpi = 500) +
   scale_color_viridis_c(option = "H") +
-  geom_label_repel(data = df_lab1, aes(label = rownames(df_lab1)), 
+  geom_label_repel(data = df_lab1, aes(label = lab),
                    fill = NA, 
                    direction = "both",
-                   size = 3, 
+                   label.size = NA,
+                   segment.color = NA,
+                   size = 5, 
                    box.padding = 0.5,
                    point.padding = 0.3, 
                    force = 1,
@@ -61,7 +64,8 @@ gg_ctc1 <- ggplot(df, aes(x = score, y = Mean.PanCK, color = sum, size = Area.um
   labs(size = "Area.um2", color = "nCount", x = "MCF7 score", y = "PCK MFI") +
   scale_y_continuous(labels = scientific_10) +
   scale_x_continuous(labels = scientific_10)
-gg_ctc1
+
+#gg_ctc1
 
 
 pltdir <- glue("{proj_dir}/figures/fig4/rds")
