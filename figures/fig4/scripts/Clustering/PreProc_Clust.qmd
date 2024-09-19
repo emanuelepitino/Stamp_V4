@@ -1,0 +1,158 @@
+---
+title: "PreProcessing - Reproducibility Experiments"
+subtitle: "Emanuele Pitino"
+date: "`r Sys.Date()`"
+format: 
+  html:
+    theme: superhero
+    smooth-scroll: true
+    code-fold: true
+    self-contained: true
+    toc: true
+    toc_float: 
+      collapsed: false
+      smooth_scroll: true
+editor: source
+editor_options: 
+  chunk_output_type: console
+execute:
+  echo: true
+  fig-width: 12     
+  fig-height: 9 
+---
+
+```{r setup, include=FALSE}
+if (interactive()) {
+  setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+}
+```
+
+## Setup
+### Libraries
+```{r}
+suppressPackageStartupMessages({
+library(SingleCellExperiment)
+library(dplyr)
+library(here)
+library(scater)
+library(scuttle)
+library(scran)
+library(data.table)
+library(glue)
+library(qs)
+library(scales)
+})
+```
+
+### Paths
+```{r}
+dir <- glue("{here()}")
+source(glue("{dir}/scripts/misc/paths.R"))
+source(glue("{dir}/scripts/misc/BIN.R"))
+```
+
+### Load data
+```{r}
+base_dir <- "./../../obj"
+
+sce <- qread(glue("{base_dir}/sce.qs"), nthreads = 8)
+sce
+```
+
+# Processing
+
+## LogNorm
+```{r}
+sce <- logNormCounts(sce, BPPARAM = bp)
+```
+
+## Feature Selection
+```{r}
+set.seed(0010101)
+dec.var <- modelGeneVar(sce, BPPARAM = bp) # model gene var
+hvg <- getTopHVGs(dec.var,fdr.threshold = 2) # select hvg on fdr
+
+dec.var$hvg <- "no" # Assign to dec.var column for plot
+dec.var$hvg[rownames(dec.var) %in% hvg] <- "yes"
+gg_hvg <- plot_hvg(dec.var = dec.var, sub = "Stamp9/11/12 SKBR3 + MCF7") # plot
+gg_hvg
+```
+
+## PCA
+
+```{r}
+set.seed(101001)
+sce <- fixedPCA(sce, subset.row = hvg)
+
+num_pcs_to_retain <- 8
+percent.var <- attr(reducedDim(sce), "percentVar")
+
+# Create a data frame for ggplot
+data <- data.frame(PC = 1:length(percent.var), Variance = percent.var)
+# Plot
+gg_var <- ggplot(data, aes(x = PC, y = Variance)) +
+  geom_point() +
+  xlab("PC") +
+  ylab("Variance explained (%)") +
+  geom_vline(xintercept = num_pcs_to_retain, color = "red") +
+  theme_bw()
+gg_var
+```
+
+## palette
+```{r}
+pal <- Polychrome::createPalette(26, c("#FBB4AE", "#B3CDE3", "#CCEBC5"))
+names(pal) <- c(unique(sce$stamp), unique(sce$sub))
+```
+
+```{r}
+reducedDim(sce, "PCA") <-  reducedDim(sce, "PCA")[,1:num_pcs_to_retain]
+wh(6,5)
+gg_pca <- plotPCA(sce, scattermore = TRUE, point_size = 1) + ggtitle("PCA")
+gg_pca
+
+plotReducedDim(sce,"PCA",color_by = "stamp", scattermore = T) + scale_color_manual(values = pal)
+```
+
+## Run UMAP
+```{r}
+set.seed(123)
+sce <- runUMAP(sce, dimred="PCA", BPPARAM = bp)
+gg_um <- plotReducedDim(sce, "UMAP", scattermore = TRUE) + scale_color_manual(values = pal) 
+gg_um
+```
+
+## Cluster
+```{r}
+snn.gr <- buildSNNGraph(sce, type = "jaccard", use.dimred="PCA", BPPARAM = bp)
+# Run Louvain
+clusters <- igraph::cluster_louvain(snn.gr, resolution = 0.5)
+sce$label <- as.character(clusters$membership)
+table(sce$label)
+```
+
+```{r}
+cd <- as.data.frame(colData(sce))
+cd <- cd[cd$sub == "MCF7",]
+cd <- as.data.frame(table(cd$label,cd$stamp))
+cd <- cd %>% group_by(Var1) %>% mutate(pct = Freq/sum(Freq)) %>% ungroup()
+
+ggplot(cd, aes(x = Var1, y = pct, fill = Var2, color = Var2)) + 
+  geom_col() +
+  theme_bw() +
+  theme(panel.grid = element_blank()) +
+  labs(fill = "Stamp", x = "Sub-stamp", y = "# Cells") +
+  guides(color = "none") 
+```
+
+```{r}
+plotColData(sce, x = "label", y = )
+```
+
+
+
+
+
+
+
+

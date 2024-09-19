@@ -34,7 +34,7 @@ source(glue("{dir}/scripts/misc/BIN.R"))
 
 
 ```{r}
-data_dir <- glue("{proj_dir}/data/stamp_6/CTC_1/raw")
+data_dir <- glue("{proj_dir}/data/stamp_6/CTC_2/raw")
 barcodes <- fread(glue("{data_dir}/cell_feature_matrix/barcodes.tsv.gz"), sep = "\t", nThread = 3, header = F)
 features <- fread(glue("{data_dir}/cell_feature_matrix/features.tsv.gz"), sep = "\t", nThread = 3, header = F)
 counts <- Matrix::readMM(glue("{data_dir}/cell_feature_matrix/matrix.mtx.gz"))

@@ -1,0 +1,230 @@
+---
+title: "Exploratory script 1 - Reproducibility"
+subtitle: "Emanuele Pitino"
+date: "`r Sys.Date()`"
+format: 
+  html:
+    theme: superhero
+    smooth-scroll: true
+    code-fold: true
+    self-contained: true
+    toc: true
+    toc_float: 
+      collapsed: false
+      smooth_scroll: true
+editor: source
+editor_options: 
+  chunk_output_type: console
+execute:
+  echo: true
+---
+
+```{r setup, include=FALSE}
+if (interactive()) {
+  setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+}
+```
+
+# Setup
+## Dependencies
+```{r}
+suppressPackageStartupMessages({
+library(SingleCellExperiment)
+library(qs)
+library(glue)
+library(here)
+library(scales)
+library(ggplot2)
+library(patchwork)
+library(ggpubr)
+library(dplyr)
+})
+```
+
+## Data
+```{r}
+cd <- qread("./../obj/cd.qs")
+sce <- qread("./../obj/sce.qs")
+
+source(glue("{here()}/scripts/misc/paths.R"))
+source(glue("{here()}/scripts/misc/BIN.R"))
+```
+
+## Plot theme
+```{r}
+# common theme
+common_theme <- theme(text = element_text(color = "black", family = "Times New Roman", size = 20),
+                      axis.text = element_text(color = "black", family = "Times New Roman", size = 18))
+```
+
+## Palette
+```{r}
+pal <- Polychrome::createPalette(26, c("#FBB4AE", "#B3CDE3", "#CCEBC5"))
+names(pal) <- c(unique(sce$stamp), unique(sce$sub))
+```
+
+# Cell numbers
+```{r}
+df <- as.data.frame(table(cd$stamp,cd$sub))
+gg_cnumb <- ggplot(df, aes(x = Var2, y = Freq, fill = Var1, color = Var1)) + 
+  geom_bar(stat = "identity", position = position_dodge(width = 0.6), width = 0.4, alpha = 1) +
+  theme_bw() +
+  theme(panel.grid = element_blank()) +
+  labs(fill = "Stamp", x = "Sub-stamp", y = "# Cells") +
+  scale_color_manual(values = pal) + 
+  scale_y_continuous(labels = scientific_10) +
+  scale_fill_manual(values = pal) +
+  guides(color = "none") +
+  common_theme
+
+gg_cnumb
+```
+
+# nCount/nFeature/Cell Area in space
+```{r, fig.width= 16, fig.height= 10}
+df <- as.data.frame(colData(sce))
+qcmet_space <- function(var){
+  
+  ggplot(df, aes(x = x_centroid, y = y_centroid, color = log(!!sym(var)))) +
+  scale_color_viridis_c() +
+  geom_point(shape = 16, size = 0.1) +
+  coord_equal() +
+  facet_grid(~sub ~ stamp) +
+  theme_bw() +
+  theme(panel.grid = element_blank(), 
+        axis.text.x = element_blank(), axis.text.y = element_blank(),
+        axis.ticks.x = element_blank(), axis.ticks.y = element_blank()) + 
+  common_theme +
+  labs(x = "x_px", y = "y_px")
+}
+
+qcmet_space("sum")
+qcmet_space("detected")
+qcmet_space("cell_area")
+
+```
+
+# Cell density plot
+```{r, fig.width= 12, fig.height= 8}
+ggplot(df, aes(x = x_centroid, y = y_centroid)) +
+  geom_density2d_filled() +
+  coord_equal() +
+  facet_grid(~sub ~ stamp) +
+  theme_bw() +
+  theme(panel.grid = element_blank(), 
+        axis.text.x = element_blank(), axis.text.y = element_blank(),
+        axis.ticks.x = element_blank(), axis.ticks.y = element_blank()) + 
+  common_theme +
+  labs(x = "x_px", y = "y_px") +
+  guides(fill = "none")
+```
+
+# nCounts/nFeature/Area
+```{r, fig.width = 12, fig.height = 8}
+qcmet <- function(var, log){
+p <- ggplot(cd, aes(x = sub, y = !!sym(var), color = stamp)) + 
+  geom_boxplot(aes(fill = stamp), alpha = 0.6) +
+  scale_y_continuous(labels = scientific_10) +
+  scale_fill_manual(values = pal) +
+  scale_color_manual(values = pal) +
+  theme_bw() +
+  theme(panel.grid = element_blank()) +
+  labs(color = "Stamp", x = "Sub-stamp") +
+  guides(fill = "none", color = "none")
+
+if(log == T) { p <- p + scale_y_log10()}
+return(p)
+}
+
+wrap_plots(
+qcmet("sum", log = T),
+qcmet("detected", log = T),
+qcmet("cell_area", log = F),
+qcmet("nucleus_area", log = F),
+ncol = 2) +
+  plot_layout(guides = "collect",axis_titles = "collect") &
+  common_theme
+```
+
+# nCount/nFeature normalized by cell area
+```{r, fig.width = 12, fig.height = 8}
+qcmet_r <- function(var, log){
+  p <- ggplot(cd, aes(x = sub, y = !!sym(var)/cell_area, color = stamp)) + 
+    geom_boxplot(aes(fill = stamp), alpha = 0.2) +
+    theme_bw() +
+    theme(panel.grid = element_blank()) +
+    scale_color_manual(values = pal) +
+    scale_fill_manual(values = pal) +
+    labs(color = "Stamp", x = "Sub-stamp") +
+    guides(fill = "none", color = "none")
+  
+  if(log == T) { p <- p + scale_y_log10()}
+  return(p)
+}
+
+wrap_plots(
+qcmet_r("sum", log = F),
+qcmet_r("detected", log = F),
+ncol = 1) + 
+  plot_layout(guides = "collect", axis_titles = "collect") &
+  common_theme
+```
+
+# nCount/nFeature vs Cell Area
+```{r, fig.width= 20, fig.height=16}
+area_qcmet <- function(var, sub, lab){
+  sub_df <- cd[cd$sub == sub,]
+  ggplot(sub_df, aes(x = cell_area, y = !!sym(var), color = stamp)) + 
+    #geom_point(shape = 16, size = 0.1, alpha = 0.1) +
+    geom_smooth(size = 1) +
+    scale_color_manual(values = pal) + 
+    scale_x_continuous(labels = scientific_10) + 
+    scale_y_continuous(labels = scientific_10) +
+    theme_bw() + 
+    theme(panel.grid = element_blank()) +
+    labs(subtitle = sub, y = lab, x = "Area.um2") +
+    guides(color = "none") 
+}
+
+count_feat_area <- wrap_plots(
+area_qcmet("sum", "MCF7","nCount"),
+area_qcmet("sum", "SKBR3","nCount"),
+area_qcmet("detected", "MCF7","nFeature"),
+area_qcmet("detected", "SKBR3","nFeature"),
+ncol = 2) + 
+  plot_layout(guides = "collect", axis_titles = "collect") &
+  common_theme
+
+count_feat_area
+```
+
+# nCounts vs nFeature
+```{r, fig.width= 20, fig.height=8}
+count_feat <- function(sub){
+  sub_df <- cd[cd$sub == sub,]
+  ggplot(sub_df, aes(x = sum, y = detected, color = stamp)) + 
+    geom_point(shape = 16, size = 0.01, alpha = 0.2) +
+    geom_smooth() +
+    scale_color_manual(values = pal) + 
+    scale_x_continuous(labels = scientific_10) + 
+    scale_y_continuous(labels = scientific_10) +
+    theme_bw() + 
+    theme(panel.grid = element_blank()) +
+    labs(subtitle = sub) + 
+    guides(color = "none")
+}
+
+wrap_plots(
+count_feat("MCF7"),
+count_feat("SKBR3"),
+ncol = 2) + 
+  plot_layout(guides = "collect", axis_titles = "collect") &
+  common_theme
+```
+
+```{r}
+dir <- "./../rds"
+saveRDS(gg_cnumb,glue("{dir}/cnumb.rds"))
+saveRDS(count_feat_area,glue("{dir}/count_feat_per_area.rds"))
+```
+

@@ -62,7 +62,7 @@ sub <- df[df$Mean.PanCK > 2500 & df$score > 0.2,]
 thr_a <- 5
 thr_c <- 6
 df_lab2 <- sub[log(sub$Area.um2) > thr_a & log(sub$sum) > thr_c, ]
-df_lab2$lab <- as.character(1:nrow(df_lab2))
+df_lab2$lab <- as.character(paste0("2.",1:nrow(df_lab2)))
 
 gg_ctc2p2 <- ggplot(sub, aes(x = log(Area.um2), y = log(sum))) + 
   ggrastr::rasterise(geom_point(shape = 16), dpi = 500) +
@@ -102,6 +102,9 @@ saveRDS(df_lab2, file = glue("{pltdir}/df_lab2.rds"))
 # save sce & cd
 sce$cline <- "PBMCs"
 sce$cline[colnames(sce) %in% rownames(df_lab2)] <- "CTCs"
+# add lab info for metadata in napari
+sce$lab <- df_lab2$lab[match(colnames(sce),rownames(df_lab2))]
+sce$lab[is.na(sce$lab)] <- "none"
 
 dir <- glue("{proj_dir}/data/stamp_4/processed/CTC2")
 dir.create(dir, showWarnings = F)

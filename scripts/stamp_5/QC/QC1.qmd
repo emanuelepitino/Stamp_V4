@@ -1,0 +1,195 @@
+---
+title: "Quality Control - Stamp 5"
+subtitle: "Emanuele Pitino"
+date: "`r Sys.Date()`"
+format: 
+  html:
+    theme: superhero
+    smooth-scroll: true
+    code-fold: true
+    self-contained: true
+    toc: true
+    toc_float: 
+      collapsed: false
+      smooth_scroll: true
+editor: source
+editor_options: 
+  chunk_output_type: console
+execute:
+  echo: true
+  fig-width: 16     
+  fig-height: 12 
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.width = 18, fig.height = 16)
+```
+
+```{r}
+# Libraries
+suppressPackageStartupMessages({
+  library(SingleCellExperiment)
+  library(tidyverse)
+  library(dplyr)
+  library(patchwork)
+  library(grid)
+  library(ggpubr)
+  library(here)
+  library(scater)
+  library(scuttle)
+  library(glue)
+  library(scran)
+  library(patchwork)
+  library(qs)
+  library(data.table)
+  library(scales)
+})
+```
+
+## Paths
+
+```{r}
+dir <- glue("{here()}")
+source(glue("{dir}/scripts/misc/paths.R"))
+source(glue("{dir}/scripts/misc/BIN.R"))
+```
+
+## Load data
+```{r}
+res_dir <- paste0(proj_dir, "/data/stamp_5/processed")
+sce <- qread(glue("{res_dir}/raw_sce.qs"), nthreads = 8)
+
+stamp <- "stamp_5_NewProc"
+sample <- "PBMCs"
+```
+
+## Add qc metrics
+```{r}
+sce <- addPerCellQCMetrics(sce)
+sce
+```
+
+## Plot function
+```{r}
+cd <- as.data.frame(colData(sce))
+plotf <- function(var){
+ ggplot(cd, aes(x = x_centroid, y = y_centroid, color = log(!!sym(var)))) + 
+  scale_color_viridis_c() + 
+  geom_point(size = 0.01, shape = 16) +
+  theme_bw() + 
+  scale_x_continuous(labels = scientific_10) + 
+  scale_y_continuous(labels = scientific_10) +
+  theme(panel.grid = element_blank(), text = element_text(colour = "black", size = 20), 
+        axis.text = element_text(colour = "black", size = 15)) +
+  labs(x = "x_px", y = "y_px") +
+  coord_equal() +
+  labs(subtitle = var, color = element_blank()) +
+  theme(plot.subtitle = element_text(size = 35, color = "black"),
+        text = element_text(color = "black", family = "Times New Roman"))
+}
+```
+
+```{r}
+plotf("sum")
+plotf("detected")
+plotf("cell_area")
+```
+
+# Find Outliers
+
+```{r}
+# Sum outliers
+discard_sum <- isOutlier(sce$sum, 
+                         type = "both", 
+                         log = TRUE,
+                         nmads = 2.5)
+# Detected outliers
+discard_detected <- isOutlier(sce$detected, 
+                         type = "both", 
+                         log = TRUE,
+                         nmads = 2.5)
+# Detected outliers
+discard_area <- isOutlier(sce$cell_area, 
+                         type = "both", 
+                         log = TRUE,
+                         nmads = 2.5)
+```
+
+```{r}
+table(discard_sum)
+table(discard_detected)
+table(discard_area)
+```
+
+```{r}
+extr_thr <- function(df){
+return <- list()
+lower <- round(attr(df, 'thresholds')['lower'],0)
+higher <- round(attr(df, 'thresholds')['higher'],0)
+return(c(lower,higher))
+}
+```
+
+```{r}
+gg_hist <- function(df, outliers, var, title) {
+  sum_thr <- extr_thr(outliers)
+  median_val <- round(median(df[[var]]), 2)
+
+  plot <- ggplot(df, aes_string(x = var)) + 
+              geom_histogram(bins = 100)  + 
+              geom_vline(xintercept = sum_thr, linetype = "dashed", color = "red") + 
+              theme(axis.text = element_text(size = 15, color = "black")) + 
+              labs(title = title, 
+                   subtitle = glue::glue("Median: {median_val}; Lower thr: {sum_thr[1]}; Higher thr: {sum_thr[2]}")) + 
+              scale_x_log10()
+  return(plot)
+}
+```
+
+```{r}
+df <- as.data.frame(colData(sce))
+```
+
+```{r}
+gg_qc_metrics <- wrap_plots(
+                gg_hist(df, discard_sum, "sum", "Counts"),
+                gg_hist(df, discard_detected, "detected", "Features"),
+                gg_hist(df, discard_area, "cell_area", "Cell Area"),
+                ncol = 3)
+```
+
+# Filter
+
+```{r}
+filt <- sce[,sce$sum > as.numeric(attr(discard_sum, "threshold")["lower"]) &
+             sce$sum < as.numeric(attr(discard_sum, "threshold")["higher"]) &
+             sce$detected > as.numeric(attr(discard_detected, "threshold")["lower"]) &
+             sce$detected < as.numeric(attr(discard_detected, "threshold")["higher"]) &
+             sce$cell_area > as.numeric(attr(discard_area, "threshold")["lower"]) &
+             sce$cell_area < as.numeric(attr(discard_area, "threshold")["higher"])]
+```
+
+```{r}
+gg_qc_metrics <- gg_qc_metrics +
+                    plot_annotation(title = glue("Quality control - {stamp} - {sample}"),
+                                    subtitle = glue("Before filtering: {number(ncol(sce), big.mark = '.')} C; After filtering: {number(ncol(filt), big.mark = '.')} C")) 
+```
+
+
+```{r}
+dir <- glue("{plt_dir}/{stamp}")
+dir.create(dir, showWarnings = F)
+pdf(glue("{dir}/QC1.pdf"), width = 14, height = 4 )
+gg_qc_metrics
+dev.off()
+```
+
+```{r, fig.width=16, fig.height= 6}
+gg_qc_metrics
+```
+
+```{r}
+dir <- glue("{proj_dir}/data/{stamp}")
+dir.create(dir, showWarnings = F, recursive = T)
+qsave(filt, glue("{dir}/qc_sce.qs"))
+```

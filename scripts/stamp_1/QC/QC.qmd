@@ -63,25 +63,30 @@ data_dir <- glue("{proj_dir}/data/{stamp}/raw/raw_proc")
 sce <- qread(glue("{data_dir}/raw_sce.qs"))
 ```
 
-## Filter out cells under the gasket if any with outlier metrics
-
+## Plot function
 ```{r}
 cd <- as.data.frame(colData(sce))
-# Plot the rotated points
-ggplot(cd, aes(CenterX_global_px, CenterY_global_px, color = log(nCount_RNA))) + 
-  geom_point(shape = 16, size = 0.001) + 
-  scale_color_viridis_c(option = "inferno") +
-  coord_equal()
+plotf <- function(var){
+ ggplot(cd, aes(x = CenterX_global_px, y = CenterY_global_px, color = log(!!sym(var)))) + 
+  scale_color_viridis_c() + 
+  geom_point(size = 0.3, shape = 16) +
+  theme_bw() + 
+  scale_x_continuous(labels = scientific_10) + 
+  scale_y_continuous(labels = scientific_10) +
+  theme(panel.grid = element_blank(), text = element_text(colour = "black", size = 20), 
+        axis.text = element_text(colour = "black", size = 15)) +
+  labs(x = "x_px", y = "y_px") +
+  coord_equal() +
+  labs(subtitle = var, color = element_blank()) +
+  theme(plot.subtitle = element_text(size = 35, color = "black"),
+        text = element_text(color = "black", family = "Times New Roman"))
+}
+```
 
-ggplot(cd, aes(CenterX_global_px, CenterY_global_px, color = log(nFeature_RNA))) + 
-  geom_point(shape = 16, size = 0.001) + 
-    scale_color_viridis_c(option = "inferno") +
-  coord_equal()
-
-ggplot(cd, aes(CenterX_global_px, CenterY_global_px, color = log(Area.um2))) + 
-  geom_point(shape = 16, size = 0.001) + 
-  scale_color_viridis_c(option = "inferno") +
-  coord_equal()
+```{r}
+plotf("nCount_RNA")
+plotf("nFeature_RNA")
+plotf("Area.um2")
 ```
 
 ```{r}
