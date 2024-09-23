@@ -53,7 +53,7 @@ dir <- glue("{here()}/scripts")
 source(glue("{dir}/misc/paths.R"))
 source(glue("{dir}/misc/BIN.R"))
 
-stamp <- "stamp_5_NewProc"
+stamp <- "stamp_5"
 sample <- "PBMCS"
 
 datadir <- glue("{proj_dir}/data/{stamp}")

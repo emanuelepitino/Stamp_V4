@@ -91,28 +91,6 @@ df <- as.data.frame(table(sce$fov,sce$label)) %>%
   mutate(Proportion = round((Freq / sum(Freq)) * 100, 2))
 
 gg_cnumb <- ggplot(df, aes(x = Var1, y = Proportion)) + 
-  geom_col(aes(fill = Var2)) +
-  scale_fill_manual(values = pal) +
-  theme_bw() +
-  theme(text = element_text(size = 15, color = "black"),
-        axis.text = element_text(size = 15, color = "black"),
-        legend.position = "none",
-        panel.grid = element_blank()) +
-  labs(fill = "Sample", y = "# Cells") +
-  labs(x = "Cluster", fill = "Cluster") +
-  scale_x_discrete(
-    breaks = c("1", "10", "20", "30", "40", "50", "60", "70", "80", "90", "97"),
-    labels = c("1", "10", "20", "30", "40", "50", "60", "70", "80", "90", "97"))
-
-gg_cnumb
-```
-
-```{r}
-df <- as.data.frame(table(sce$fov,sce$label)) %>%
-  group_by(Var1) %>%
-  mutate(Proportion = round((Freq / sum(Freq)) * 100, 2))
-
-gg_cnumb <- ggplot(df, aes(x = Var1, y = Proportion)) + 
   geom_col(aes(fill = Var2), alpha = 0.9) +
   scale_fill_manual(values = pal) +
   theme_bw() +
@@ -125,14 +103,10 @@ gg_cnumb <- ggplot(df, aes(x = Var1, y = Proportion)) +
   scale_x_discrete(
     breaks = c("1", "10", "20", "30", "40", "50", "60", "70", "80", "90", "97"),
     labels = c("1", "10", "20", "30", "40", "50", "60", "70", "80", "90", "97")) +
-  geom_hline(yintercept = median(df$Proportion[df$Var2 == "SKBR3"]), color = "red", size = 1) +
-  geom_hline(yintercept = (100-(median(df$Proportion[df$Var2 == "LnCAP"]))), color = "red", size = 1) +
   coord_flip()
 
 gg_cnumb
 ```
-
-
 
 ## Space
 ```{r}
@@ -285,7 +259,6 @@ mtx_scaled <- z(x)
 ```
 
 Plot
-
 ```{r}
 # Perform hierarchical clustering on euclidean distance matrix with "average" method
 column_dist_euclidean <- dist(mtx_scaled, method = "euclidean")
@@ -373,7 +346,6 @@ dev.off()
 saveRDS(hm, glue("{proj_dir}/figures/fig1/rds/hm.rds"))
 
 ```
-
 
 ```{r}
 dir <- glue("{proj_dir}/data/{stamp}/{sample}/Ist")

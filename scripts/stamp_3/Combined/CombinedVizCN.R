@@ -120,11 +120,11 @@ c <- qread(glue("{res_dir}/c20k/qc_c20k.qs"), nthreads = 8)
 # Take lognorm matrices
 c <- logNormCounts(c)
 n <- logNormCounts(n)
-c <- as(logcounts(c), "dgCMatrix")
-n <- as(logcounts(n), "dgCMatrix")
+c <- as(counts(c), "dgCMatrix")
+n <- as(counts(n), "dgCMatrix")
 
-c <- rowSums(c)
-n <- rowSums(n)
+c <- rowSums(c) / ncol(n)
+n <- rowSums(n) / ncol(n)
 c <- as.data.frame(as.matrix(c))
 n <- as.data.frame(as.matrix(n))
 
@@ -138,12 +138,11 @@ df <- merge(c, n, by = "gene", all = TRUE)
 
 gg_corr <- ggplot(df, aes(x = Cells, y = Nuclei)) + 
   ggrastr::rasterize(geom_point(shape = 16, size = 0.9, alpha = 0.8), dpi = 300) +
-  ggpubr::stat_cor(method = "spearman", label.x = -3, label.y = 80000, size = 5) + 
-  geom_abline(slope = 1, intercept = 0, color = "red4") +
-  scale_x_continuous(labels = scientific_10)  +
-  scale_y_continuous(labels = scientific_10) +
+  ggpubr::stat_cor(method = "pearson", label.x = -3, label.y = 50, size = 5) + 
+  geom_smooth(method = "lm", color = "red") +
   theme_bw() +
-  theme(panel.grid =  element_blank())
+  theme(panel.grid =  element_blank()) +
+  labs(x ="Mean aggregated counts/gene - 20K cells", y ="Mean aggregated counts/gene - 20K nuclei")
 
 # Save
 dir <- glue("{proj_dir}/figures/fig2/rds")

@@ -70,36 +70,16 @@ names(agg_fl)[names(agg_fl) == "value"] <- "flex"
 
 df <- merge(agg_cs, agg_fl, by = c("gene", "variable"), all = TRUE)
 
-#df <- df %>% filter(flex > 1 & cosmx > 1)
-# Plot
-ggplot(df, aes(x = flex, y = cosmx)) +
-  geom_point(shape = 16, size = 0.6, alpha = 0.8) +
-  ggpubr::stat_cor(method = "spearman", label.x = -3, label.y = 2) + 
-  scale_y_log10(labels = scientific_10()) +  #
-  scale_x_log10(labels = scientific_10()) +
-  geom_abline(slope = 1, x = 0, color = "red4", linetype = "dashed") +
-  labs(title = "LnCAP") +
-  theme_bw() +
-  theme(
-    text = element_text(size = 10, color = "black"), 
-    axis.text = element_text(size = 10, color = "black"),
-    panel.grid = element_blank()
-  ) +
-  facet_wrap(~variable)
-
 
 corr_plot <- function(df,subset){
   
 sub <- df[df$variable == subset,]
-
-# Plot with labels for the top 10 genes
+# Plot 
 plt <- ggplot(sub, aes(x = flex, y = cosmx)) +
   ggrastr::rasterize(geom_point(shape = 16, size = 0.2, alpha = 0.8), dpi = 1000) +
-  ggpubr::stat_cor(method = "spearman", label.x = -3, label.y = 10, size = 3) + 
+  ggpubr::stat_cor(method = "spearman", label.x = -3, label.y = 6, size = 3) + 
   scale_y_log10() +
   scale_x_log10() +
-  scale_x_log10() +
-  scale_y_log10() +
   geom_abline(slope = 1, intercept = 0, color = "red4", linetype = "dashed") +
   labs(title = subset) +
   theme_bw() +
@@ -107,7 +87,8 @@ plt <- ggplot(sub, aes(x = flex, y = cosmx)) +
     text = element_text(size = 10, color = "black"), 
     axis.text = element_text(size = 8, color = "black"),
     panel.grid = element_blank()
-  ) 
+  ) +
+  labs(x = "Mean nCount - Flex", y= "Mean nCount - CosMx")
 return(plt)
 }
 
@@ -117,6 +98,7 @@ gg_corr <- wrap_plots(
               corr_plot(df,"MCF7"),
               ncol = 3) +
                 plot_layout(axis_titles = "collect")
+gg_corr
 
 pdf(glue("{proj_dir}/figures/fig1/raw/corr.pdf"), width = 12,height = 3)
 gg_corr

@@ -17,25 +17,35 @@ suppressPackageStartupMessages({
   library(scales)
 })
 # bin 
-sub <- "Whole PBMCs"
-stamp <- "stamp_5"
+stamp <- "stamp_11"
+sub <- "PBMCs"
 dir <- glue("{here()}")
 source(glue("{dir}/scripts/misc/paths.R"))
 source(glue("{dir}/scripts/misc/BIN.R"))
 # load data
-res_dir <- glue("{proj_dir}/data/{stamp}/processed")
-sce <- qread(glue("{res_dir}/qc_sce.qs"))
+res_dir <- glue("{proj_dir}/data/{stamp}/{sub}/processed")
+sce <- qread(glue("{res_dir}/sce_filt.qs"))
 sce
-#sce <- sce[,sample(colnames(sce),10000)]
+#sce <- sce[,sample(colnames(sce),100000)]
 
 # Log normalize
 ##### ##### ##### ##### ##### ##### ##### ##### ##### ##### ##### ##### 
 sce <- logNormCounts(sce, BPPARAM = bp) 
 
+# Feature Selection
+dec.var <- modelGeneVar(sce, BPPARAM = bp) # model gene var
+hvg <- getTopHVGs(dec.var,fdr.threshold = 0.9) # select hvg on fdr
+
+dec.var$hvg <- "no" # Assign to dec.var column for plot
+dec.var$hvg[rownames(dec.var) %in% hvg] <- "yes"
+gg_hvg <- plot_hvg(dec.var = dec.var, sub = "stamp_11 PBMCs") # plot
+gg_hvg
+
 ## PCA
 ##### ##### ##### ##### ##### ##### ##### ##### ##### ##### ##### ##### 
 set.seed(101001)
-sce <- fixedPCA(sce,BSPARAM=IrlbaParam(), subset.row = NULL) # approximate SVD with irlba
+sce <- fixedPCA(sce,BSPARAM=IrlbaParam(), subset.row = hvg) # approximate SVD with irlba
+
 num_pcs_to_retain <- 10
 percent.var <- attr(reducedDim(sce), "percentVar")
 # Plot Elbow
@@ -62,12 +72,14 @@ gg_um
 
 ## Combined plot
 ##### ##### ##### ##### ##### ##### ##### ##### ##### ##### ##### ##### 
-combined <- wrap_plots(gg_var, gg_pca, gg_um, ncol = 2, nrow = 2) +
+combined <- wrap_plots(gg_var, gg_hvg, gg_pca, gg_um, ncol = 2, nrow = 2) +
   plot_annotation(tag_levels = "A") + 
   plot_annotation(title = glue("Stamp 5 - {sub}"), subtitle = glue("N = {comma(ncol(sce))} cells"))
 combined
 # save plot
-pdf(glue("{plt_dir}/stamp_5/PreProc.pdf"), width = 12, height = 8)
+pltdir <- glue("{plt_dir}/{stamp}/{sub}")
+dir.create(pltdir, showWarnings = F, recursive = T)
+pdf(glue("{pltdir}/PreProc.pdf"), width = 12, height = 8)
 combined
 dev.off()
 

@@ -160,6 +160,25 @@ gg_space <-  ggplot(df, aes(x = CenterX_global_px, y = CenterY_global_px, color 
 gg_space
 ```
 
+```{r}
+plist <- list()
+for(clust in unique(df$label)){
+  
+  sub <- df[df$label == clust,]
+  plist[[clust]] <- ggplot(sub, aes(x = CenterX_global_px, y = CenterY_global_px, color = label)) + 
+  scale_color_manual(values = pal) +
+  ggrastr::rasterise(geom_point(size = 0.1, shape = 16), dpi = 600) +
+  theme_bw() + 
+  theme(panel.grid = element_blank(), text = element_text(colour = "black", size = 20), 
+        axis.text = element_text(colour = "black", size = 15)) +
+  labs(x = "x_px", y = "y_px") +
+  guides(color = guide_legend(override.aes = list(size = 4))) +
+   coord_equal() +
+   labs(subtitle = clust)
+}
+plist
+```
+
 
 ## FlightPath
 ```{r}

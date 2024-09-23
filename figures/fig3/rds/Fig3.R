@@ -2,6 +2,7 @@ library(ggplot2)
 library(patchwork)
 library(ComplexHeatmap)
 library(grid)
+library(qs)
 
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
@@ -9,6 +10,9 @@ um <- qread("gg_um.qs")
 prop <- qread("gg_prop.qs", nthreads = 8)
 qcmet <- qread("gg_qcmet.qs")
 prop <- qread("dotplot.qs")
+
+prop <- readRDS("gg_prop.rds")
+qcmet <- readRDS("gg_qcmet.rds")
 
 # load fonts
 library(extrafont)

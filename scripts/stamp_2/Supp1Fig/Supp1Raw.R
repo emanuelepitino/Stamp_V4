@@ -1,3 +1,10 @@
+library(glue)
+library(here)
+library(dplyr)
+library(ggplot2)
+library(here)
+library(qs)
+
 dir <- glue("{here()}")
 source(glue("{dir}/scripts/misc/paths.R"))
 source(glue("{dir}/scripts/misc/BIN.R"))
@@ -137,12 +144,13 @@ df <- merge(c, f, by = "gene", all = TRUE)
 # plot
 gg_corr <- ggplot(df, aes(x = Flex, y = CosMx)) + 
   ggrastr::rasterize(geom_point(shape = 16, size = 0.9, alpha = 0.8), dpi = 300) +
-  ggpubr::stat_cor(method = "spearman", label.x = -3, label.y = 2, size = 5) + 
-  geom_abline(slope = 1, intercept = 0, color = "red4") +
+  ggpubr::stat_cor(method = "pearson", label.x = -3, label.y = 2, size = 5) + 
+  geom_smooth(method = "lm") +
   scale_y_log10(labels = scientific_10) +
   scale_x_log10(labels = scientific_10) +
   theme_bw() +
-  theme(panel.grid =  element_blank())
+  theme(panel.grid =  element_blank()) +
+  labs(x = "Mean nCount - Flex", y = "Mean nCount - CosMx")
 
 gg_corr
 
@@ -158,4 +166,3 @@ saveRDS(gg_c, glue("{dir}/counts.rds"))
 saveRDS(gg_anno, glue("{dir}/anno.rds"))
 saveRDS(gg_prob, glue("{dir}/prob.rds"))
 saveRDS(gg_corr, glue("{dir}/corr.rds"))
-

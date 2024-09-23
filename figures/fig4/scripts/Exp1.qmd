@@ -57,6 +57,12 @@ common_theme <- theme(text = element_text(color = "black", family = "Times New R
                       axis.text = element_text(color = "black", family = "Times New Roman", size = 18))
 ```
 
+
+```{r}
+cd <- cd[cd$stamp != "stamp_9",]
+sce <- sce[,sce$stamp != "stamp_9"]
+```
+
 ## Palette
 ```{r}
 pal <- Polychrome::createPalette(26, c("#FBB4AE", "#B3CDE3", "#CCEBC5"))
@@ -121,27 +127,32 @@ ggplot(df, aes(x = x_centroid, y = y_centroid)) +
 
 # nCounts/nFeature/Area
 ```{r, fig.width = 12, fig.height = 8}
-qcmet <- function(var, log){
+qcmet <- function(var, log,ylab){
 p <- ggplot(cd, aes(x = sub, y = !!sym(var), color = stamp)) + 
   geom_boxplot(aes(fill = stamp), alpha = 0.6) +
-  scale_y_continuous(labels = scientific_10) +
+ # scale_y_continuous(labels = scientific_10) +
   scale_fill_manual(values = pal) +
   scale_color_manual(values = pal) +
   theme_bw() +
   theme(panel.grid = element_blank()) +
-  labs(color = "Stamp", x = "Sub-stamp") +
+  labs(color = "Stamp", x = "Sub-stamp", y = ylab) +
   guides(fill = "none", color = "none")
 
 if(log == T) { p <- p + scale_y_log10()}
 return(p)
 }
 
-wrap_plots(
-qcmet("sum", log = T),
-qcmet("detected", log = T),
-qcmet("cell_area", log = F),
-qcmet("nucleus_area", log = F),
-ncol = 2) +
+count_feat <- wrap_plots(
+  qcmet("sum", log = T, "nCount"),
+  qcmet("detected", log = T, "nFeature"),
+  ncol = 1) +
+  plot_layout(guides = "collect",axis_titles = "collect") &
+  common_theme
+
+areas <- wrap_plots(
+  qcmet("cell_area", log = F, "Cell Area.um2"),
+  qcmet("nucleus_area", log = F, "Nuclei Area.um2"),
+  ncol = 1) +
   plot_layout(guides = "collect",axis_titles = "collect") &
   common_theme
 ```
@@ -226,5 +237,7 @@ ncol = 2) +
 dir <- "./../rds"
 saveRDS(gg_cnumb,glue("{dir}/cnumb.rds"))
 saveRDS(count_feat_area,glue("{dir}/count_feat_per_area.rds"))
+saveRDS(count_feat,glue("{dir}/count_feat.rds"))
+saveRDS(areas,glue("{dir}/area.rds"))
 ```
 

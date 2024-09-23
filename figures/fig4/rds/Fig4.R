@@ -21,15 +21,16 @@ names <- sub("\\.rds$", "", rds_files)
 # read files and apply the common theme
 list2env(setNames(lapply(rds_files, function(x) readRDS(x) & common_theme), names), envir = .GlobalEnv)
 
-a <- wrap_plots(cnumb,count_feat_per_area, ncol = 2) + plot_layout(widths = c(1,2))
-fig4 <- wrap_plots(a, gg_corr, ncol = 1) 
+a <- wrap_plots(cnumb, count_feat, ncol = 2)
+b <- wrap_plots(area, gg_corr, ncol = 2)
 
+fig4 <- wrap_plots(a,b, ncol = 1)
 # save
 dir <- "./../raw"
 dir.create(dir, showWarnings = F)
 
 pdf(glue("{dir}/fig4.pdf"), width = 25, height = 22)
-wrap_plots(a, gg_corr, ncol = 1) 
+fig4
 dev.off()
 
 

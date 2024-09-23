@@ -41,6 +41,6 @@ D_F <- wrap_plots(um,cnumb, ncol = 1) + plot_layout(heights = c(1,3))
 
 fig1 <- wrap_plots(B_C_E,D_F, ncol = 2) + plot_layout(widths = c(5,1))
 
-pdf(file = "./../raw/fig1.pdf", width = 38, height = 25, bg = "transparent")
+pdf(file = "./../raw/fig1.pdf", width = 38, height = 25)
 fig1
 dev.off()

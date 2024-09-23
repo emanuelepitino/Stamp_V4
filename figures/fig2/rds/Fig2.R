@@ -7,17 +7,11 @@ setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
 pos <-  readRDS("gg_pos.rds")
 cnumb <- readRDS("gg_cnumb.rds")
-corr <- readRDS("gg_corr.rds")
 sum <- readRDS("gg_sum.rds")
 feat <- readRDS("gg_feat.rds")
-
-
-p2pos <-  readRDS("p2_gg_pos.rds")
-p2cnumb <- readRDS("p2_gg_cnumb.rds")
-p2corr <- readRDS("p2_gg_corr.rds")
-p2sum <- readRDS("p2_gg_sum.rds")
-p2feat <- readRDS("p2_gg_feat.rds")
-# load fonts
+area <- readRDS("gg_area.rds")
+corr <- readRDS("gg_corr.rds")
+gene_corr <- readRDS("gg_gene_corr.rds")
 library(extrafont)
 #loadfonts(device = "pdf")
 #extrafont::font_import()   
@@ -37,13 +31,17 @@ cnumb <- cnumb & common_theme
 corr <- corr & common_theme & labs(color = "Sample")
 sum <- sum & common_theme 
 feat <- feat & common_theme
+area <- area & common_theme
+gene_corr <- gene_corr & common_theme
 
-b_c <- wrap_plots(cnumb, corr)
-d_e <- wrap_plots(sum,feat) + plot_layout(axis_titles = "collect")
-bcde <- wrap_plots(b_c,d_e, ncol = 1)
-p1 <- wrap_plots(pos,bcde, ncol = 2) + plot_layout(widths = c(1,4))
+a <- wrap_plots(pos,cnumb,corr, nrow = 1) + plot_layout(widths = c(2,2,2))
+b <- wrap_plots(sum,feat,area, gene_corr, ncol = 2)
 
+fig3 <- wrap_plots(a,b, ncol = 1) + plot_layout(heights = c(1,2))
 
+pdf(file = glue("{dir}/../fig3.pdf"), width = 25, height = 18)
+fig3
+dev.off()
 # Second panel
 #### #### #### #### #### #### #### #### #### #### #### #### #### #### #### #### #### #### 
 p2pos <- p2pos & common_theme 
