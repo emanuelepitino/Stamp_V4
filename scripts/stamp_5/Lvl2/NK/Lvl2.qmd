@@ -1,5 +1,5 @@
 ---
-title: "Level 2 annotation - stamp5"
+title: "Level2 annotation - stamp5"
 subtitle: "Emanuele Pitino"
 date: "`r Sys.Date()`"
 format: 
@@ -47,9 +47,10 @@ source(glue("{dir}/scripts/misc/BIN.R"))
 
 
 ```{r}
-sub <- "B"
-res_dir <- glue("{proj_dir}/data/stamp_5/processed/Lvl2/{sub}")
+sub <- "NK"
+res_dir <- glue("{proj_dir}/data/stamp_5/processed/{sub}")
 sce <- qread(glue("{res_dir}/clust_sce.qs"), nthreads = 8)
+sce
 ```
 
 
@@ -65,18 +66,23 @@ markers <- scoreMarkers(sce, sce$label, BPPARAM = bp)
 feat <- lapply(markers, function(df) {
   as.data.frame(df) %>%
     arrange(desc(median.logFC.detected)) %>%
-    head(15) %>%
+    head(5) %>%
     rownames()
 })
 feat <- unique(unlist(feat))
 
-gg_clust1 <- create_plots2(sce, "label", c("IGKC","IGHM","IGHG1"))
+#feat <- c("F","CD4","CD8A","CD8B","NCAM1","FCGR3A","CD14","CD19")
+#feat <- c("IL1B","FCGR3A","CD14","CD1C","CCR2","K IT","CD68","IGAM","CD34","FLT3")
+#feat <- c(feat,"IL7R","SELL","LEF1","KLRB1")
+# - FASL, - EGFR, - CSF1, - "FHIT"  -"CENPV"  -"ARG1"   - "A2M"  -  "TRAT1" -  "AREG"    -"NELL2"
+# -  "REG4"    "S100B"
+feat <- c("FCGR3A","CD14","KLB1","NCAM1","CD34","FLT3","KIT","CD3E","CD4","CD8A")
+gg_clust1 <- create_plots2(sce, "label", feat)
 ```
-
 
 ```{r}
 df <- as.data.frame(colData(sce))
-gg_clust2 <- wrap_plots(
+gg_clust_2 <- wrap_plots(
     plot_density(df, "sum", "label", pal, "Counts",200),
     plot_density(df, "detected", "label", pal, "Features",150),
     plot_density(df, "cell_area", "label", pal, "Cell Area",500),
@@ -86,14 +92,21 @@ plot_annotation(tag_levels = "A")
 ```
 
 ## Annotation
+Here we want to distinguish main lineages such as T/B lymphocytes and Myeloid cells.
 ```{r}
-sce$lvl2 <- ""
-sce$lvl2[sce$label == "1"] <- "Naive B"
-sce$lvl2[sce$label == "2"] <- "Naive B"
-sce$lvl2[sce$label == "4"] <- "Naive B"
-sce$lvl2[sce$label == "5"] <- "Naive B"
-sce$lvl2[sce$label == "6"] <- "Class-Switched B"
-sce$lvl2[sce$label == "3"] <- "pDCs"
+sce$lvl2[sce$label == "1"] <- "Cytotoxic CD8"
+sce$lvl2[sce$label == "2"] <- "Effector Memory CD8"
+sce$lvl2[sce$label == "6"] <- "Naive CD8"
+sce$lvl2[sce$label == "5"] <- "Naive CD4"
+sce$lvl2[sce$label == "8"] <- "Tregs"
+sce$lvl2[sce$label == "3"] <- "T helper"
+sce$lvl2[sce$label == "9"] <- "Central Memory CD4"
+sce$lvl2[sce$label == "7"] <- "Effector Memory CD4"
+sce$lvl2[sce$label == "4"] <- "LowQ"
+```
+
+```{r}
+#sce$lvl1 <- factor(sce$lvl1, levels = c("T","NK","B","Myeloid", "LowQ"))
 ```
 
 
@@ -104,38 +117,38 @@ names(pal_lvl2) <- unique(sce$lvl2)
 
 # Find new markers for lvl1
 ```{r}
-markers <- scoreMarkers(sce, sce$lvl2, BPPARAM = bp)
+#markers <- scoreMarkers(sce, sce$lvl1, BPPARAM = bp)
 
-feat <- lapply(markers, function(df) {
-  as.data.frame(df) %>%
-    arrange(desc(median.logFC.detected)) %>%
-    head(5) %>%
-    rownames()
-})
-feat <- unique(unlist(feat))
-
+#feat <- lapply(markers, function(df) {
+#  as.data.frame(df) %>%
+#    arrange(desc(median.logFC.detected)) %>%
+#    head(5) %>%
+#    rownames()
+#})
+#feat <- unique(unlist(feat))
+#feat <- c("CD3E","CD4","CD8A","CD8B","NCAM1","FCGR3A","CD14","CD19")
 gg_anno1 <- create_plots2(sce, "lvl2", feat)
 ```
 
 ```{r}
 df <- as.data.frame(colData(sce))
 gg_anno2 <- wrap_plots(
-    plot_density(df, "sum", "lvl2", pal_lvl2, "Counts",200),
-    plot_density(df, "detected", "lvl2", pal_lvl2, "Features",150),
-    plot_density(df, "cell_area", "lvl2", pal_lvl2, "Cell Area",500),
-    plot_density(df, "nucleus_area", "lvl2", pal_lvl2, "Nucleus Area",500),
+    plot_density(df, "sum", "lvl2", pal_lvl1, "Counts",200),
+    plot_density(df, "detected", "lvl2", pal_lvl1, "Features",150),
+    plot_density(df, "cell_area", "lvl2", pal_lvl1, "Cell Area",500),
+    plot_density(df, "nucleus_area", "lvl2", pal_lvl1, "Nucleus Area",500),
     ncol = 2, nrow = 2) +
 plot_annotation(tag_levels = "A")
 ```
 
 ```{r}
-outdir <- glue("{plt_dir}/stamp_5/Lvl2/{sub}")
+outdir <- glue("{plt_dir}/stamp_5/{sub}")
 if(!dir.exists(paste0(outdir))){
   dir.create(outdir)
 }
 pdf(paste0(outdir,"/lvl2.pdf"), width = 12, height = 8)
 gg_clust1
-gg_clust2
+gg_clust_2
 gg_anno1
 gg_anno2
 dev.off()

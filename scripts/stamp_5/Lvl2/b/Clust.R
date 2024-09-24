@@ -1,4 +1,4 @@
-# Libraries
+# dependencies
 suppressPackageStartupMessages({
   library(SingleCellExperiment)
   library(tidyverse)
@@ -14,39 +14,32 @@ suppressPackageStartupMessages({
   library(BiocNeighbors)
   library(BiocSingular)
 })
-
 # Misc and paths
 dir <- glue("{here()}")
 source(glue("{dir}/scripts/misc/paths.R"))
 source(glue("{dir}/scripts/misc/BIN.R"))
-
 # Load data
 sub <- "B"
-res_dir <- paste0(proj_dir, "/data/stamp_5/processed/Lvl2/",sub)
+stamp <- "stamp_5"
+res_dir <- glue("{proj_dir}/data/{stamp}/processed/{sub}")
 sce <- qread(glue("{res_dir}/proc_sce.qs"))
-
 sce
+# sce <- sce[,1:1000]
 
-#sce <- sce[,1:100000]
+# Build SNN graph 
+#### #### #### #### #### #### #### #### #### #### #### #### #### #### #### #### 
+snn.gr <- buildSNNGraph(sce, type = "jaccard",
+                        BNPARAM=AnnoyParam(),  # annoy algorithm
+                        use.dimred="PCA", BPPARAM = bp)
+# Run Leiden
+#### #### #### #### #### #### #### #### #### #### #### #### #### #### #### #### 
+clusters <- igraph::cluster_louvain(snn.gr, resolution = 0.5)
 
-# Annoy Algorithm
-# Build SNN graph
-snn.gr <- buildSNNGraph(sce, type = "jaccard", BNPARAM=AnnoyParam(ntrees = 200), use.dimred="PCA", BPPARAM = bp)
-# Run Louvain
-annoy <- igraph::cluster_louvain(snn.gr, resolution = 0.5)
-annoy2 <- igraph::cluster_louvain(snn.gr, resolution = 1)
-# Assign labels
-#sce$leiden <- as.character(leiden)
-sce$label <- as.character(annoy$membership)
-sce$label2 <- as.character(annoy2$membership)
-
-#table(sce$leiden)
+# Viz
+#### #### #### #### #### #### #### #### #### #### #### #### #### #### #### #### 
+sce$label <- as.character(clusters$membership) # assign labels
 table(sce$label)
-
-plotReducedDim(sce, "UMAP", colour_by = "label", text_by = "label", point_size = 1, raster = F, scattermore = T)
-plotReducedDim(sce, "UMAP", colour_by = "label2", text_by = "label2", point_size = 1, raster = F, scattermore = T)
+plotReducedDim(sce, "UMAP", colour_by ="label",text_by = "label", scattermore = T)
 
 # Save
-qsave(sce, glue("{res_dir}/clust_lvl2_sce.qs"))
-
-
+qsave(sce, glue("{res_dir}/clust_sce.qs"), nthreads = 8)

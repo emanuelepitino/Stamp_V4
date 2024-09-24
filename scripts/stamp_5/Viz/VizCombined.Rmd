@@ -31,20 +31,23 @@ source(glue("{dir}/scripts/misc/BIN.R"))
 
 ## Load data
 ```{r}
-myeloid <- qread(glue("{proj_dir}/data/stamp_5/processed/Lvl2/Myeloid/Myeloid/lvl2_sce.qs"), nthreads = 8)
-B <- qread(glue("{proj_dir}/data/stamp_5/processed/Lvl2/B/B/lvl2_sce.qs"), nthreads = 8)
-T <- qread(glue("{proj_dir}/data/stamp_5/processed/Lvl2/T/lvl2_sce.qs"), nthreads = 8)
+myeloid <- qread(glue("{proj_dir}/data/stamp_5/processed/Myeloid/lvl2_sce.qs"), nthreads = 8)
+B <- qread(glue("{proj_dir}/data/stamp_5/processed/B/lvl2_sce.qs"), nthreads = 8)
+T <- qread(glue("{proj_dir}/data/stamp_5/processed/T/lvl2_sce.qs"), nthreads = 8)
+
+NK <- qread(glue("{proj_dir}/data/stamp_5/processed/NK/proc_sce.qs"), nthreads = 8)
+NK$lvl2 <- "NK"
 ```
 
 ```{r}
-sce <- cbind(myeloid,B,T)
+sce <- cbind(myeloid,B,T,NK)
+sce <- sce[,sce$lvl2 != "LowQ"]
 ```
 
 ```{r}
 sce$Cell_Lineage <- sce$lvl1
 sce$Cell_Type <- sce$lvl2
-sce$Cell_Lineage <- factor(sce$Cell_Lineage, levels = c("T","B","Myeloid"))
-levels(sce$Cell_Type)[levels(sce$Cell_Type) == "Th2"] <- "Th"
+sce$Cell_Lineage <- factor(sce$Cell_Lineage, levels = c("T","B","Myeloid","NK"))
 ```
 
 ```{r}
@@ -95,32 +98,20 @@ qc_metrics_lin <- wrap_plots(
 plot_annotation(tag_levels = "A")
 ```
 
-```{r}
-qc_metrics_anno <- wrap_plots(
-    plot_density(df, "sum", "Cell_Type", pal, "Counts",200),
-    plot_density(df, "detected", "Cell_Type", pal, "Features",150),
-    plot_density(df, "cell_area", "Cell_Type", pal, "Cell Area",500),
-    plot_density(df, "nucleus_area", "Cell_Type", pal, "Nucleus Area",500),
-    ncol = 2, nrow = 2) +
-plot_annotation(tag_levels = "A")
-```
 
 ```{r}
 pdf(glue("{plt_dir}/combined_qcmetrics.pdf"), width = 20, height = 10)
 qc_metrics_lin +
   theme(axis.text = element_text(size = 14, color = "black"), axis.title = element_text(size = 14, color = "black"))
-
-qc_metrics_anno +
-  theme(axis.text = element_text(color = "black"), axis.title = element_text(color = "black"))
 dev.off()
 ```
 
 ## Gene expression
 
 ```{r}
-feats_lin <- c("CD3E","CD3D","CD247","NGK7","NCAM1",
+feats_lin <- c("CD3E","CD3D","CD4","CD8A","CD8B",
            "CD19","CD79A","CD79B",
-           "CD14","FCGR3A","CD68","CD86")
+           "CD14","FCGR3A","CD68","CD86","NGK7","NCAM1")
 ```
 
 ```{r}
@@ -151,16 +142,6 @@ dots_lin <- gg_dots(sce, features = feats_lin, variable = "Cell_Lineage") +
   theme(axis.text = element_text(size = 18, color = "black"), axis.title = element_text(size = 20, color = "black"))
 ```
 
-```{r}
-sce$Cell_Type <- factor(sce$Cell_Type, levels = c("Naive CD4","Memory CD4","Th","Tregs","Naive CD8",
-                                         "Memory CD8","Cytotoxic CD8",
-                                        "CD56dim CD16+ NK",
-                                         "CD56+ CD16- NK",
-                                        "Naive B","Class Switched B", "Naive IgK+ B", "Class Switched IgK+ B", 
-                                        "Plasmacells",
-                                        "CD14+ Mono","Int Mono", "CD16+ Mono", "CD1C+ DCs",
-                                        "LowQ"))
-```
 
 ```{r}
 dots_type <- gg_dots(sce, features = feats, variable = "Cell_Type") +
