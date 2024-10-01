@@ -1,0 +1,159 @@
+---
+title: "Level2 annotation - stamp11"
+subtitle: "Emanuele Pitino"
+date: "`r Sys.Date()`"
+format: 
+  html:
+    theme: superhero
+    smooth-scroll: true
+    code-fold: true
+    self-contained: true
+    toc: true
+    toc_float: 
+      collapsed: false
+      smooth_scroll: true
+params:
+  sample: !expr NA
+editor: source
+editor_options: 
+  chunk_output_type: console
+execute:
+  echo: true
+---
+```{r}
+suppressPackageStartupMessages({
+library(SingleCellExperiment)
+library(tidyverse)
+library(dplyr)
+library(here)
+library(scater)
+library(scuttle)
+library(glue)
+library(qs)
+library(parallel)
+library(scran)
+library(BiocParallel)
+library(BiocNeighbors)
+library(BiocSingular)
+library(data.table)
+})
+```
+
+```{r}
+dir <- glue("{here()}")
+# Parameters and paths
+source(glue("{dir}/scripts/misc/paths.R"))
+source(glue("{dir}/scripts/misc/BIN.R"))
+stamp <- "stamp_11"
+sub <- "PBMCs"
+lin <- "T"
+sce <- qread(glue("{proj_dir}/data/{stamp}/{sub}/processed/{lin}/clust_sce.qs"), nthreads = 8)
+```
+
+
+```{r}
+pal <- Polychrome::createPalette(26,c("#99FFFF", "#FF99FF", "#FFFF99"))
+names(pal) <- unique(sce$label)
+```
+
+## Clusters analysis
+```{r}
+markers <- scoreMarkers(sce, sce$label, BPPARAM = bp)
+
+feat <- lapply(markers, function(df) {
+  as.data.frame(df) %>%
+    arrange(desc(median.logFC.cohen)) %>%
+    head(15) %>%
+    rownames()
+})
+feat <- unique(unlist(feat))
+gg_clust1 <- create_plots2(sce, "label", feat)
+```
+
+```{r}
+df <- as.data.frame(colData(sce))
+gg_clust_2 <- wrap_plots(
+    plot_density(df, "sum", "label", pal, "Counts",2000),
+    plot_density(df, "detected", "label", pal, "Features",1000),
+    plot_density(df, "cell_area", "label", pal, "Cell Area",500),
+    plot_density(df, "nucleus_area", "label", pal, "Nucleus Area",80),
+    ncol = 2, nrow = 2) +
+plot_annotation(tag_levels = "A")
+```
+
+```{r}
+df <- df[sample(rownames(df)),]
+
+ggplot(df, aes(x = x_centroid, y = y_centroid, color = label)) +
+  geom_point(shape = 16, size = 0.01) +
+  scale_color_manual(values = pal) +
+  theme_bw() +
+  theme(panel.grid = element_blank()) +
+  coord_equal() +
+  guides(color = guide_legend(override.aes = list(size = 5))) 
+```
+
+## Annotation
+Here we want to distinguish main lineages such as T/B lymphocytes and Myeloid cells.
+```{r}
+sce$lvl2[sce$label == "1"] <- "CD8"
+sce$lvl2[sce$label == "2"] <- "CD4"
+sce$lvl2[sce$label == "3"] <- "CD8"
+sce$lvl2[sce$label == "4"] <- "CD8"
+sce$lvl2[sce$label == "5"] <- "CD4"
+sce$lvl2[sce$label == "6"] <- "Gamma Delta T"
+```
+
+```{r}
+#sce$lvl2 <- factor(sce$lvl1, levels = c("T","NK","B","Myeloid", "LowQ"))
+```
+
+
+```{r}
+pal_lvl2 <- Polychrome::createPalette(26,c("#99FFFF", "#FF99FF", "#FFFF99"))
+names(pal_lvl2) <- unique(sce$lvl2)
+```
+
+# Find new markers for lvl1
+```{r}
+markers <- scoreMarkers(sce, sce$lvl2, BPPARAM = bp)
+
+feat <- lapply(markers, function(df) {
+  as.data.frame(df) %>%
+    arrange(desc(median.logFC.cohen)) %>%
+    head(15) %>%
+    rownames()
+})
+feat <- unique(unlist(feat))
+gg_anno1 <- create_plots2(sce, "lvl2", feat)
+```
+
+```{r}
+df <- as.data.frame(colData(sce))
+gg_anno2 <- wrap_plots(
+    plot_density(df, "sum", "lvl2", pal_lvl2, "Counts",2000),
+    plot_density(df, "detected", "lvl2", pal_lvl2, "Features",1000),
+    plot_density(df, "cell_area", "lvl2", pal_lvl2, "Cell Area",500),
+    plot_density(df, "nucleus_area", "lvl2", pal_lvl2, "Nucleus Area",80),
+    ncol = 2, nrow = 2) +
+plot_annotation(tag_levels = "A")
+```
+
+```{r}
+outdir <- glue("{plt_dir}/{stamp}/{sub}/{lin}")
+if(!dir.exists(paste0(outdir))){
+  dir.create(outdir)
+}
+pdf(paste0(outdir,"/lvl2.pdf"), width = 12, height = 8)
+gg_clust1
+gg_clust_2
+gg_anno1
+gg_anno2
+dev.off()
+```
+
+
+```{r}
+res_dir <- glue("{proj_dir}/data/{stamp}/{sub}/processed/{lin}")
+qsave(sce, glue("{res_dir}/lvl1_sce.qs"), nthreads = 8)
+```

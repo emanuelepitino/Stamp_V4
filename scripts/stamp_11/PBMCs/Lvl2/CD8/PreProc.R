@@ -19,15 +19,15 @@ suppressPackageStartupMessages({
 # bin 
 stamp <- "stamp_11"
 sub <- "PBMCs"
-lin <- "T"
+lin <- "CD8"
 dir <- glue("{here()}")
 source(glue("{dir}/scripts/misc/paths.R"))
 source(glue("{dir}/scripts/misc/BIN.R"))
 # load data
-res_dir <- glue("{proj_dir}/data/{stamp}/{sub}/processed")
+res_dir <- glue("{proj_dir}/data/{stamp}/{sub}/processed/T")
 sce <- qread(glue("{res_dir}/lvl1_sce.qs"), nthreads = 8)
 
-sce <- sce[,sce$lvl1 == lin]
+sce <- sce[,sce$lvl2 == lin]
 sce
 
 # Log normalize
@@ -47,7 +47,7 @@ gg_hvg
 ##### ##### ##### ##### ##### ##### ##### ##### ##### ##### ##### ##### 
 set.seed(101001)
 sce <- fixedPCA(sce,BSPARAM=IrlbaParam(), subset.row = hvg) # approximate SVD with irlba
-num_pcs_to_retain <- 10
+num_pcs_to_retain <- 5
 percent.var <- attr(reducedDim(sce), "percentVar")
 # Plot Elbow
 data <- data.frame(PC = 1:length(percent.var), Variance = percent.var)
@@ -85,6 +85,6 @@ combined
 dev.off()
 
 # Save obj
-res_dir <- glue("{res_dir}/{lin}")
+res_dir <- glue("{proj_dir}/data/{stamp}/{sub}/processed/{lin}")
 dir.create(res_dir, showWarnings = F)
 qsave(sce, glue("{res_dir}/proc_sce.qs"), nthreads = 8)

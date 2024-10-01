@@ -890,6 +890,7 @@ plot_hvg <- function(dec.var, sub) {
   # Convert dec.var to a data frame for ggplot2
   df <- as.data.frame(dec.var@listData)
   df$gene <- dec.var@rownames
+  df <- df[sample(rownames(df)),]
   
   # Ensure hvg is a factor
   df$hvg <- as.factor(df$hvg)
@@ -901,12 +902,13 @@ plot_hvg <- function(dec.var, sub) {
   
   # Plot with ggplot2
   p <- ggplot(df, aes(x = mean, y = total)) +
-    geom_point(aes(color = hvg), size = 0.8) +
+    geom_point(aes(color = hvg), shape = 16, size = 0.5) +
     scale_color_manual(values = colors) +
-    labs(x = "Mean of log-expression", y = "Variance of log-expression", subtitle = paste0("Subset: ", sub),
+    labs(x = "Mean expression", y = "Variance", subtitle = paste0("Subset: ", sub),
          title = glue("HVGs, n = {n_hvg} / {pct_hvg}%")) +
-    theme_minimal() +
+    theme_bw() +
     theme(
+      panel.grid = element_blank(),
       legend.position = "right",
       plot.title = element_text(color = "black", size = 18),
       plot.subtitle = element_text(color = "black", size = 14),

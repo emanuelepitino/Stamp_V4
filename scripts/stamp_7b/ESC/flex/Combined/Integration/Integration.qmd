@@ -17,10 +17,10 @@ editor_options:
   chunk_output_type: console
 execute:
   echo: true
-  fig-width: 12     
-  fig-height: 9 
+  fig-width: 8     
+  fig-height: 6 
 ---
-In this script we will continue the analysis of the stamp_7b combined object by integrating with Harmony
+In this script we will continue the analysis of the stamp_7b combined object by visualizing the batch effect and integrating with Harmony.
 
 ## Setup
 ### Libraries
@@ -61,67 +61,117 @@ sce
 
 # Visualize batch effect
 
-## PCA
-```{r}
-df <- as.data.frame(colData(sce))
-um <- reducedDim(sce,"PCA")
-df <- cbind(df,um)
-df <- df[sample(nrow(df)), ]
+## PCA-UMAP by time-point
+```{r, fig.width= 12, fig.height=5}
+df <- as.data.frame(colData(sce)) # cd
+pca <- reducedDim(sce,"PCA") # pc
+um <- reducedDim(sce,"UMAP") # um
 
-pal <- Polychrome::createPalette(n_distinct(sce$sample), c("#fc6060", "#74f774", "#7c7cfc")) # palette
-names(pal) <- unique(sce$sample)
+df <- cbind(df,pca,um)
 
-ggplot(df, aes(x = PC1, y = PC2, color = sample)) +
-  ggrastr::rasterise(geom_point(shape = 16, size = 0.1), dpi = 1000) +
-  scale_color_manual(values = pal) +
-  theme_bw() +
-  theme(
-    text = element_text(size = 15, color = "black"),
-    axis.text = element_text(size = 10, color = "black"),
-    panel.grid.major = element_blank(),  # Remove major grid lines
-    panel.grid.minor = element_blank()   # Remove minor grid lines
-  ) +
-  guides(color = guide_legend(override.aes = list(size = 3))) +
-  labs(x = "umap1", y = "umap2", color = "Sample")
+df <- df[sample(nrow(df)), ] # shuffle
+
+# pal
+pal <- Polychrome::createPalette(sum(n_distinct(df$sample),n_distinct(df$library),
+                                     n_distinct(df$label)),
+                                     c("#00FFFF", "#FF00FF", "#FFFF00")) 
+names(pal) <- c(unique(df$sample), unique(df$label), unique(df$library))
+
+
+df$sample <- factor(df$sample, levels = c("iESC_0h","iESC_6h","iESC_12h","iESC_24h","iESC_48h",
+                                          "iESC_72h","iESC_96h","iESC_120h"))
+
+df$label<- factor(df$label, levels = c(sort(unique(as.numeric(df$label)))))
+
+wrap_plots(
+  
+  ggplot(df, aes(x = PC1, y = PC2, color = sample)) +
+    ggrastr::rasterise(geom_point(shape = 16, size = 0.1), dpi = 1000) +
+    scale_color_manual(values = pal) +
+    theme_bw() +
+    theme(
+      text = element_text(size = 25, color = "black"),
+      axis.text = element_text(size = 20, color = "black"),
+      legend.text = element_text(size = 12),
+      legend.title = element_text(size = 18),
+      panel.grid.major = element_blank(),  # Remove major grid lines
+      panel.grid.minor = element_blank()   # Remove minor grid lines
+    ) +
+    guides(color = guide_legend(override.aes = list(size = 3))) +
+    labs(x = "PC1", y = "PC2", color = "Sample") +
+    coord_equal(),
+  
+  ggplot(df, aes(x = UMAP1, y = UMAP2, color = sample)) +
+    ggrastr::rasterise(geom_point(shape = 16, size = 0.1), dpi = 1000) +
+    scale_color_manual(values = pal) +
+    theme_bw() +
+    theme(
+      text = element_text(size = 25, color = "black"),
+      axis.text = element_text(size = 20, color = "black"),
+      legend.text = element_text(size = 12),
+      legend.title = element_text(size = 18),
+      panel.grid.major = element_blank(),  # Remove major grid lines
+      panel.grid.minor = element_blank()   # Remove minor grid lines
+    ) +
+    guides(color = guide_legend(override.aes = list(size = 3))) +
+    labs(x = "UMAP1", y = "UMAP2", color = "Sample"),
+ncol = 2) + 
+  plot_layout(guides = "collect")
 ```
 
-## UMAP
-
-```{r}
-df <- as.data.frame(colData(sce))
-um <- reducedDim(sce,"UMAP")
-df <- cbind(df,um)
-df <- df[sample(nrow(df)), ]
-
-ggplot(df, aes(x = UMAP1, y = UMAP2, color = sample)) +
-  ggrastr::rasterise(geom_point(shape = 16, size = 0.1), dpi = 1000) +
-  scale_color_manual(values = pal) +
-  theme_bw() +
-  theme(
-    text = element_text(size = 15, color = "black"),
-    axis.text = element_text(size = 10, color = "black"),
-    panel.grid.major = element_blank(),  # Remove major grid lines
-    panel.grid.minor = element_blank()   # Remove minor grid lines
-  ) +
-  guides(color = guide_legend(override.aes = list(size = 3))) +
-  labs(x = "umap1", y = "umap2", color = "Sample")
+## PCA-UMAP by library
+```{r, fig.width= 12, fig.height=5}
+wrap_plots(
+  
+  ggplot(df, aes(x = PC1, y = PC2, color = library)) +
+    ggrastr::rasterise(geom_point(shape = 16, size = 0.1), dpi = 1000) +
+    scale_color_manual(values = pal) +
+    theme_bw() +
+    theme(
+      text = element_text(size = 25, color = "black"),
+      axis.text = element_text(size = 20, color = "black"),
+      legend.text = element_text(size = 12),
+      legend.title = element_text(size = 18),
+      panel.grid.major = element_blank(),  # Remove major grid lines
+      panel.grid.minor = element_blank()   # Remove minor grid lines
+    ) +
+    guides(color = guide_legend(override.aes = list(size = 3))) +
+    labs(x = "PC1", y = "PC2", color = "Library") +
+    coord_equal(),
+  
+  ggplot(df, aes(x = UMAP1, y = UMAP2, color = library)) +
+    ggrastr::rasterise(geom_point(shape = 16, size = 0.1), dpi = 1000) +
+    scale_color_manual(values = pal) +
+    theme_bw() +
+    theme(
+      text = element_text(size = 25, color = "black"),
+      axis.text = element_text(size = 20, color = "black"),
+      legend.text = element_text(size = 12),
+      legend.title = element_text(size = 18),
+      panel.grid.major = element_blank(),  # Remove major grid lines
+      panel.grid.minor = element_blank()   # Remove minor grid lines
+    ) +
+    guides(color = guide_legend(override.aes = list(size = 3))) +
+    labs(x = "UMAP1", y = "UMAP2", color = "Library"),
+ncol = 2) + 
+  plot_layout(guides = "collect")
 ```
-
 
 # Run Harmony
 
+Integrate the PC space with Harmony over the "library" variable  and the first 20 Principal Components
 ```{r}
-sce <- RunHarmony(
+sce <- harmony::RunHarmony(
         sce,
-        group.by.vars = "sample",
-        dims.use = 1:10,
+        group.by.vars = "library",
+        dims.use = 1:20,
         verbose = TRUE,
         reduction.save = "HARMONY",
         ncores = 8
 )
 ```
 
-# Run UMAP on integrated PCA
+# Run UMAP on integrated PC
 ```{r}
 sce <- runUMAP(sce, dimred = "HARMONY", name = "UMAP_integ")
 ```
@@ -129,63 +179,230 @@ sce <- runUMAP(sce, dimred = "HARMONY", name = "UMAP_integ")
 
 # Check integration
 
-## PCA
-```{r}
-df <- as.data.frame(colData(sce))
-um <- reducedDim(sce,"HARMONY")
-df <- cbind(df,um)
-df <- df[sample(nrow(df)), ]
+## PCA-UMAP by time-point
+```{r, fig.width= 12, fig.height=5}
+df <- as.data.frame(colData(sce)) # cd
+pca <- reducedDim(sce,"HARMONY") # pc
+um <- reducedDim(sce,"UMAP_integ") # um
 
-ggplot(df, aes(x = HARMONY_1, y = HARMONY_2, color = sample)) +
-  ggrastr::rasterise(geom_point(shape = 16, size = 0.1), dpi = 1000) +
-  scale_color_manual(values = pal) +
-  theme_bw() +
-  theme(
-    text = element_text(size = 15, color = "black"),
-    axis.text = element_text(size = 10, color = "black"),
-    panel.grid.major = element_blank(),  # Remove major grid lines
-    panel.grid.minor = element_blank()   # Remove minor grid lines
-  ) +
-  guides(color = guide_legend(override.aes = list(size = 3))) +
-  labs(x = "harmony_1", y = "harmony_2", color = "Sample")
+df <- cbind(df,pca,um)
+
+df <- df[sample(nrow(df)), ] # shuffle
+
+df$sample <- factor(df$sample, levels = c("iESC_0h","iESC_6h","iESC_12h","iESC_24h","iESC_48h",
+                                          "iESC_72h","iESC_96h","iESC_120h"))
+
+df$label<- factor(df$label, levels = c(sort(unique(as.numeric(df$label)))))
+
+wrap_plots(
+  
+  ggplot(df, aes(x = HARMONY_1, y = HARMONY_2, color = sample)) +
+    ggrastr::rasterise(geom_point(shape = 16, size = 0.1), dpi = 1000) +
+    scale_color_manual(values = pal) +
+    theme_bw() +
+    theme(
+      text = element_text(size = 25, color = "black"),
+      axis.text = element_text(size = 20, color = "black"),
+      legend.text = element_text(size = 12),
+      legend.title = element_text(size = 18),
+      panel.grid.major = element_blank(),  # Remove major grid lines
+      panel.grid.minor = element_blank()   # Remove minor grid lines
+    ) +
+    guides(color = guide_legend(override.aes = list(size = 3))) +
+    labs(x = "HARMONY1", y = "HARMONY2", color = "Sample") +
+    coord_equal(),
+  
+  ggplot(df, aes(x = UMAP1, y = UMAP2, color = sample)) +
+    ggrastr::rasterise(geom_point(shape = 16, size = 0.1), dpi = 1000) +
+    scale_color_manual(values = pal) +
+    theme_bw() +
+    theme(
+      text = element_text(size = 25, color = "black"),
+      axis.text = element_text(size = 20, color = "black"),
+      legend.text = element_text(size = 12),
+      legend.title = element_text(size = 18),
+      panel.grid.major = element_blank(),  # Remove major grid lines
+      panel.grid.minor = element_blank()   # Remove minor grid lines
+    ) +
+    guides(color = guide_legend(override.aes = list(size = 3))) +
+    labs(x = "UMAP1", y = "UMAP2", color = "Sample"),
+ncol = 2) + 
+  plot_layout(guides = "collect")
 ```
 
-## UMAP
-```{r}
-df <- as.data.frame(colData(sce))
-um <- reducedDim(sce,"UMAP_integ")
-df <- cbind(df,um)
-df <- df[sample(nrow(df)), ]
-
-ggplot(df, aes(x = UMAP1, y = UMAP2, color = sample)) +
-  ggrastr::rasterise(geom_point(shape = 16, size = 0.1), dpi = 1000) +
-  scale_color_manual(values = pal) +
-  theme_bw() +
-  theme(
-    text = element_text(size = 15, color = "black"),
-    axis.text = element_text(size = 10, color = "black"),
-    panel.grid.major = element_blank(),  # Remove major grid lines
-    panel.grid.minor = element_blank()   # Remove minor grid lines
-  ) +
-  guides(color = guide_legend(override.aes = list(size = 3))) +
-  labs(x = "umap_1", y = "umap_2", color = "Sample")
+## PCA-UMAP by library
+```{r, fig.width= 12, fig.height=5}
+wrap_plots(
+  
+  ggplot(df, aes(x = HARMONY_1, y = HARMONY_2, color = library)) +
+    ggrastr::rasterise(geom_point(shape = 16, size = 0.1), dpi = 1000) +
+    scale_color_manual(values = pal) +
+    theme_bw() +
+    theme(
+      text = element_text(size = 25, color = "black"),
+      axis.text = element_text(size = 20, color = "black"),
+      legend.text = element_text(size = 12),
+      legend.title = element_text(size = 18),
+      panel.grid.major = element_blank(),  # Remove major grid lines
+      panel.grid.minor = element_blank()   # Remove minor grid lines
+    ) +
+    guides(color = guide_legend(override.aes = list(size = 3))) +
+    labs(x = "HARMONY1", y = "HARMONY2", color = "Library") +
+    coord_equal(),
+  
+  ggplot(df, aes(x = UMAP1, y = UMAP2, color = library)) +
+    ggrastr::rasterise(geom_point(shape = 16, size = 0.1), dpi = 1000) +
+    scale_color_manual(values = pal) +
+    theme_bw() +
+    theme(
+      text = element_text(size = 25, color = "black"),
+      axis.text = element_text(size = 20, color = "black"),
+      legend.text = element_text(size = 12),
+      legend.title = element_text(size = 18),
+      panel.grid.major = element_blank(),  # Remove major grid lines
+      panel.grid.minor = element_blank()   # Remove minor grid lines
+    ) +
+    guides(color = guide_legend(override.aes = list(size = 3))) +
+    labs(x = "UMAP1", y = "UMAP2", color = "Library"),
+ncol = 2) + 
+  plot_layout(guides = "collect")
 ```
+
+## Principal Component Regression
+```{r, fig.width= 8, fig.height=4}
+.pcr <- \(sce, x) {
+    y <- reducedDim(sce, "HARMONY")
+    z <- summary(lm(y ~ sce[[x]]))
+    r2 <- sapply(z, \(.) .$adj.r.squared)
+    data.frame(x, pc=seq_along(r2), r2)
+}
+# for multiple variables 
+xs <- c("sample", "library", "label")
+df <- do.call(rbind, lapply(xs, \(x) .pcr(sce, x)))
+
+ggplot(df, aes(x = pc, y = r2, color = x)) +
+  geom_point() +
+  geom_line() +
+  theme_bw() + 
+  theme(panel.grid = element_blank()) +
+  scale_x_continuous(breaks = unique(df$pc))
+```
+
+# Clustering on integrated PCA
+
+## Build snn graph
+```{r}
+snn <- buildSNNGraph(sce, type = "jaccard", use.dimred="HARMONY", BPPARAM = bp)
+```
+
+## Run louvain 
+```{r}
+clusters <- igraph::cluster_louvain(snn, resolution = 0.2)
+```
+
+```{r}
+sce$label <- as.character(clusters$membership) # assign labels
+pal <- Polychrome::createPalette(n_distinct(sce$label), c("#FBB4AE", "#B3CDE3", "#CCEBC5"))
+names(pal) <- unique(sce$label)
+```
+
+
+## Clusters numbers
+
+```{r, fig.width= 12, fig.height= 6}
+df <- as.data.frame(colData(sce))
+df <- as.data.frame(table(df$label))  %>%
+        mutate(pct = round(Freq/sum(Freq),2))
+df$Var1 <- factor(df$Var1, levels = df$Var1[order(-df$Freq)])
+
+ggplot(df, aes(x = Var1, y = Freq, fill = Var1)) + 
+  geom_col() + 
+  geom_text(aes(label = Freq), vjust = -0.5, size = 3) +
+  scale_fill_manual(values = pal) + 
+  theme_bw() +
+  theme(text = element_text(size = 15, color = "black"),
+        axis.text = element_text(size = 10, color = "black")) +
+  labs(x = "Cluster", y = "nCells", fill = "Cluster")
+```
+
+## Clusters proportions per sample
+```{r, fig.width= 12, fig.height= 6}
+df <- as.data.frame(table(sce$sample,sce$label)) %>%
+      group_by(Var1) %>%
+      mutate(Proportion = round((Freq / sum(Freq)) * 100, 2))
+
+df$Var1 <- factor(df$Var1, levels = c("iESC_0h","iESC_6h","iESC_12h","iESC_24h","iESC_48h","iESC_72h","iESC_96h","iESC_120h"))
+
+df$Var2 <- factor(df$Var2, levels = c(sort(unique(as.numeric(df$Var2)))))
+
+ggplot(df, aes( x = Var1 , y = Proportion, fill = Var2)) + 
+  geom_col() +
+  scale_fill_manual(values = pal) +
+  theme_bw() +
+  theme(text = element_text(size = 15, color = "black"),
+        axis.text = element_text(size = 15, color = "black"),
+        panel.grid = element_blank()) +
+  labs(x = "Sample", fill = "Cluster")
+```
+
+
 
 ## Doublets Umap
-```{r, fig.width= 12, fig.height= 5}
+```{r, fig.width= 6, fig.height= 5}
+df <- as.data.frame(colData(sce)) # cd
+um <- reducedDim(sce,"UMAP_integ") # umap
+df <- cbind(df,um) # merge
+df <- df[sample(nrow(df)), ] # shuffle
+
 ggplot(df, aes(x = UMAP1, y = UMAP2, color = scDblFinder.class)) +
   ggrastr::rasterise(geom_point(shape = 16, size = 0.1), dpi = 1000) +
   theme_bw() +
   scale_color_manual(values = c("singlet" = "darkgrey", "doublet" = "red4")) +
   theme(
-    text = element_text(size = 15, color = "black"),
-    axis.text = element_text(size = 10, color = "black"),
+    text = element_text(size = 25, color = "black"),
+    axis.text = element_text(size = 20, color = "black"),
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 18),
     panel.grid.major = element_blank(),  # Remove major grid lines
     panel.grid.minor = element_blank()   # Remove minor grid lines
   ) +
   guides(color = guide_legend(override.aes = list(size = 3))) +
-  labs(x = "umap_1", y = "umap_2", color = "scDblFinder")
+  labs(x = "", y = "", color = "scDblFinder")
 ```
+
+## Doublets per cluster
+```{r}
+df <- as.data.frame(colData(sce))
+df <- as.data.frame(table(df$label, df$scDblFinder.class))
+
+# Calculate the percentage and reorder by 'singlet' percentage
+df <- df %>%
+  group_by(Var1) %>%
+  mutate(pct = round(Freq / sum(Freq), 2)) %>%
+  ungroup()
+
+# Calculate the percentage of 'singlets' for reordering
+singlet_pct <- df %>% 
+  filter(Var2 == "singlet") %>% 
+  select(Var1, pct)
+
+# Reorder Var1 by the percentage of 'singlets'
+df$Var1 <- factor(df$Var1, levels = singlet_pct$Var1[order(singlet_pct$pct, decreasing = TRUE)])
+
+# Make Var2 a factor to control the order in the legend and plot
+df$Var2 <- factor(df$Var2, levels = c("doublet", "singlet"))
+
+# Create the plot
+ggplot(df, aes(x = Var1, y = pct, fill = Var2)) +
+  scale_fill_manual(values = c("singlet" = "green4", "doublet" = "red4")) +
+  geom_col(position = "stack") + 
+  labs(x = "Cluster", y = "Proportion", fill = "scDblFinder", title = "Doublets % per Cluster") + 
+  theme_bw() +
+  theme(text = element_text(size = 15, color = "black"),
+        axis.text = element_text(size = 10, color = "black")) + 
+  guides(color = guide_legend(override.aes = list(size = 3)))
+```
+
 
 # Save data
 ```{r}

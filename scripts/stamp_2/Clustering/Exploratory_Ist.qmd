@@ -212,7 +212,6 @@ Normalize & log-transform the profiles
 ```{r}
 norm <- unsup$profiles /  Matrix::colSums(unsup$profiles) # normalize
 norm <- norm + 1e-6
-#lognorm <- log1p(norm) + 1e-6  # log transform
 ```
 
 Calculate logFC

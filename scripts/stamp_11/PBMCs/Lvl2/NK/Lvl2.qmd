@@ -1,0 +1,123 @@
+---
+title: "Level2 annotation - stamp11"
+subtitle: "Emanuele Pitino"
+date: "`r Sys.Date()`"
+format: 
+  html:
+    theme: superhero
+    smooth-scroll: true
+    code-fold: true
+    self-contained: true
+    toc: true
+    toc_float: 
+      collapsed: false
+      smooth_scroll: true
+params:
+  sample: !expr NA
+editor: source
+editor_options: 
+  chunk_output_type: console
+execute:
+  echo: true
+---
+```{r}
+suppressPackageStartupMessages({
+library(SingleCellExperiment)
+library(tidyverse)
+library(dplyr)
+library(here)
+library(scater)
+library(scuttle)
+library(glue)
+library(qs)
+library(parallel)
+library(scran)
+library(BiocParallel)
+library(BiocNeighbors)
+library(BiocSingular)
+library(data.table)
+})
+```
+
+```{r}
+dir <- glue("{here()}")
+# Parameters and paths
+source(glue("{dir}/scripts/misc/paths.R"))
+source(glue("{dir}/scripts/misc/BIN.R"))
+stamp <- "stamp_11"
+sub <- "PBMCs"
+lin <- "NK"
+sce <- qread(glue("{proj_dir}/data/{stamp}/{sub}/processed/{lin}/clust_sce.qs"), nthreads = 8)
+```
+
+
+```{r}
+pal <- Polychrome::createPalette(26,c("#99FFFF", "#FF99FF", "#FFFF99"))
+names(pal) <- unique(sce$label)
+```
+
+## Clusters analysis
+```{r}
+t <- c("CCR5","GZMK", "EOMES","LAG3","ZNF683","GZMH","KLRD1","PDCD1","FASLG","CCR6",
+          "CCR4","CCL20","RORC","CCR7","KLRK1","REG4","CD38","FOXP3","TNFRSF9","IL7R","IL12RB2",
+          "CD40LG","SELL","LEF1","KLRB1")
+
+
+cd4 <- c("TCF7", "TBX21", "STAT1", "IFNG", "CXCR3", "CD40LG", "ICOS",  "CTLA4", "CX3CR1", "CXCL13", "BCL6", "EOMES", "FASLG", "FOXP3", "GATA3", "STMN1", "TOP2A", "IL10", "IL12RB1", "IL12RB2", "IL15", "IL15RA", "IL17A", "IL17B", "IL17D", "IL17F", "IL21", "IL26", "IL2RA", "IL2RB", "IL2RG","KLRC1", "KLRD1", "KLRF1", "KLRG1")
+
+cd8 <- c("TCF7", "KLRB1", "KLRC1", "KLRD1", "KLRF1", "KLRG1", "CX3CR1", "ENTPD1", "IFI16", "IFI35", "IFI44L", "IFIH1", "IFIT1", "IFIT2", "IFIT3", "IFITM1", "GZMA", "GZMB", "GZMH", "GZMK", "HAVCR2")
+
+feat2 <- c("NCAM1","KIT", "CD34", "FLT3", "ST2", "ID2",  "ICOS")
+feat3 <- c("CD3E","CD3G", "CD4", "CD8A", "CD8B","FCGR3A","ID2","ST2") 
+feat <- unique(c(t,cd4,cd8, feat2, feat3))
+gg_clust1 <- create_plots2(sce, "label", feat)
+
+pdf("/Users/emanuelepitino/Desktop/stamp11/NK.pdf", width = 20, height = 8)
+gg_clust1
+dev.off()
+```
+
+```{r}
+df <- as.data.frame(colData(sce))
+gg_clust_2 <- wrap_plots(
+    plot_density(df, "sum", "label", pal, "Counts",2000),
+    plot_density(df, "detected", "label", pal, "Features",1000),
+    plot_density(df, "cell_area", "label", pal, "Cell Area",500),
+    plot_density(df, "nucleus_area", "label", pal, "Nucleus Area",80),
+    ncol = 2, nrow = 2) +
+plot_annotation(tag_levels = "A")
+```
+
+```{r}
+df <- df[sample(rownames(df)),]
+
+ggplot(df, aes(x = x_centroid, y = y_centroid, color = label)) +
+  geom_point(shape = 16, size = 0.01) +
+  scale_color_manual(values = pal) +
+  theme_bw() +
+  theme(panel.grid = element_blank()) +
+  coord_equal() +
+  guides(color = guide_legend(override.aes = list(size = 5))) 
+```
+
+## Annotation
+Here we want to distinguish main lineages such as T/B lymphocytes and Myeloid cells.
+```{r}
+sce$lvl2[sce$label == 1] <- "CD56hi CD16- NK"
+sce$lvl2[sce$label == 3] <- "lowQ"
+sce$lvl2[sce$label %in% c(2,4,5,6,7,8,9)] <- "CD56low CD16high NK"
+sce$lvl2[sce$label == 10] <- "cycling NK"
+```
+
+```{r}
+sce <- sce[,sce$lvl2 != "lowQ"]
+create_plots2(sce, "lvl2", feat)
+```
+
+
+
+
+```{r}
+res_dir <- glue("{proj_dir}/data/{stamp}/{sub}/processed/{lin}")
+qsave(sce, glue("{res_dir}/lvl2_sce.qs"), nthreads = 8)
+```

@@ -96,27 +96,31 @@ saveRDS(gg_cnumb, file = glue("{dir}/gg_cnumb.rds"))
 ####### ####### ####### ####### ####### ####### ####### ####### ####### ####### #######
 df <- as.data.frame(table(cd$sample)) %>%
       mutate(InputCells = c(100,225,500,1000, 20000,20000))
+avg <- round(mean(df$pct_diff),2)
 
-gg_corr <- ggplot(df, aes(x = InputCells, y = Freq, color = Var1)) +
-  scale_color_manual(values = psamp) +
-  geom_abline(slope = 1, color = "black", linetype = "dotted", alpha = 1) +
-  geom_point(size = 5, alpha = 0.8) + 
-  scale_x_log10() +
-  scale_y_log10() +
-  labs(
-    x = "Input cells",
-    y = "Recovered cells",
-    color = "Sample"
-  ) +
-  theme_bw() +
+
+df <- df %>%
+  mutate(pct_diff = (round((Freq/InputCells),2))*100)
+
+
+ggplot(df, aes(x = Var1, y = pct_diff, fill = Var1)) +
+  geom_col() +
+  scale_fill_manual(values = psamp) +
+  geom_text(aes(label = Freq), vjust = -0.5, size = 2.5, color = "black") +
+  theme_bw() + 
   theme(panel.grid = element_blank()) +
-  theme(legend.position = "none") +
-  stat_cor(method = "pearson", 
-           label.x.npc = "left", 
-           label.y.npc = "top", 
-           size = 5, 
-           color = "black")
-gg_corr
+  labs(x = "sub-STAMP", y = "% recovered cells") + 
+  theme(legend.position = "none", 
+        text = element_text(size = 20, color = "black"),
+        axis.text = element_text(size = 18, color = "black")) +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+
+
+
+
+
+
+
 
 saveRDS(gg_corr, file = glue("{dir}/gg_corr.rds"))
 ####### ####### ####### ####### ####### ####### ####### ####### ####### ####### #######
@@ -197,5 +201,6 @@ gg_corr <- ggplot(df, aes(x = Cells, y = Nuclei)) +
   theme_bw() +
   theme(panel.grid =  element_blank()) +
   labs(x ="Mean counts/gene - 20K cells", y ="Mean counts/gene - 20K nuclei")
+
 
 saveRDS(gg_corr, file = glue("{dir}/gg_gene_corr.rds"))

@@ -21,7 +21,7 @@ source(glue("{dir}/scripts/misc/BIN.R"))
 # Load data
 stamp <- "stamp_11"
 sub <- "PBMCs"
-lin <- "T"
+lin <- "CD8"
 res_dir <- glue("{proj_dir}/data/{stamp}/{sub}/processed/{lin}")
 sce <- qread(glue("{res_dir}/proc_sce.qs"), nthreads = 8)
 sce

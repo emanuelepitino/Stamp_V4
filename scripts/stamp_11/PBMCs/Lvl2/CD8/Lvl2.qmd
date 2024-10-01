@@ -46,7 +46,7 @@ source(glue("{dir}/scripts/misc/paths.R"))
 source(glue("{dir}/scripts/misc/BIN.R"))
 stamp <- "stamp_11"
 sub <- "PBMCs"
-lin <- "T"
+lin <- "CD8"
 sce <- qread(glue("{proj_dir}/data/{stamp}/{sub}/processed/{lin}/clust_sce.qs"), nthreads = 8)
 ```
 
@@ -58,16 +58,19 @@ names(pal) <- unique(sce$label)
 
 ## Clusters analysis
 ```{r}
-markers <- scoreMarkers(sce, sce$label, BPPARAM = bp)
+t <- c("CCR5","GZMK", "EOMES","LAG3","ZNF683","GZMH","KLRD1","PDCD1","FASLG","CCR6",
+          "CCR4","CCL20","RORC","CCR7","KLRK1","REG4","CD38","FOXP3","TNFRSF9","IL7R","IL12RB2",
+          "CD40LG","SELL","LEF1","KLRB1")
 
-feat <- lapply(markers, function(df) {
-  as.data.frame(df) %>%
-    arrange(desc(median.logFC.cohen)) %>%
-    head(15) %>%
-    rownames()
-})
-feat <- unique(unlist(feat))
+
+cd8 <- c("TCF7", "KLRB1", "KLRC1", "KLRD1", "KLRF1", "KLRG1", "CX3CR1", "ENTPD1", "IFI16", "IFI35", "IFI44L", "IFIH1", "IFIT1", "IFIT2", "IFIT3", "IFITM1", "GZMA", "GZMB", "GZMH", "GZMK", "HAVCR2")
+
+feat <- unique(c(t,cd8))
+
 gg_clust1 <- create_plots2(sce, "label", feat)
+pdf("/Users/emanuelepitino/Desktop/stamp11/CD8.pdf", width = 18, height = 8)
+gg_clust1
+dev.off()
 ```
 
 ```{r}
@@ -94,66 +97,19 @@ ggplot(df, aes(x = x_centroid, y = y_centroid, color = label)) +
 ```
 
 ## Annotation
-Here we want to distinguish main lineages such as T/B lymphocytes and Myeloid cells.
 ```{r}
-sce$lvl2[sce$label == "1"] <- "CD8"
-sce$lvl2[sce$label == "2"] <- "CD4"
-sce$lvl2[sce$label == "3"] <- "CD8"
-sce$lvl2[sce$label == "4"] <- "CD8"
-sce$lvl2[sce$label == "5"] <- "CD4"
-sce$lvl2[sce$label == "6"] <- "Gamma Delta T"
+sce$lvl2[sce$label == "1"] <- "CD8 T eff."
+sce$lvl2[sce$label == "2"] <- "CD8 TN"
+sce$lvl2[sce$label == "3"] <-  "CD8 T inf.resp."
+sce$lvl2[sce$label == "4"] <- "CD8 TEM"
+sce$lvl2[sce$label == "5"] <- "CD8 TPM"
+sce$lvl2[sce$label == "6"] <- "CD8 T act."
+sce$lvl2[sce$label == "7"] <- "CD8 T cyto."
+sce$lvl2[sce$label == "8"] <- "CD8 TCM" 
+sce$lvl2[sce$label == "9"] <- "CD8 T eff."
 ```
-
-```{r}
-#sce$lvl2 <- factor(sce$lvl1, levels = c("T","NK","B","Myeloid", "LowQ"))
-```
-
-
-```{r}
-pal_lvl2 <- Polychrome::createPalette(26,c("#99FFFF", "#FF99FF", "#FFFF99"))
-names(pal_lvl2) <- unique(sce$lvl2)
-```
-
-# Find new markers for lvl1
-```{r}
-markers <- scoreMarkers(sce, sce$lvl2, BPPARAM = bp)
-
-feat <- lapply(markers, function(df) {
-  as.data.frame(df) %>%
-    arrange(desc(median.logFC.cohen)) %>%
-    head(15) %>%
-    rownames()
-})
-feat <- unique(unlist(feat))
-gg_anno1 <- create_plots2(sce, "lvl2", feat)
-```
-
-```{r}
-df <- as.data.frame(colData(sce))
-gg_anno2 <- wrap_plots(
-    plot_density(df, "sum", "lvl2", pal_lvl2, "Counts",2000),
-    plot_density(df, "detected", "lvl2", pal_lvl2, "Features",1000),
-    plot_density(df, "cell_area", "lvl2", pal_lvl2, "Cell Area",500),
-    plot_density(df, "nucleus_area", "lvl2", pal_lvl2, "Nucleus Area",80),
-    ncol = 2, nrow = 2) +
-plot_annotation(tag_levels = "A")
-```
-
-```{r}
-outdir <- glue("{plt_dir}/{stamp}/{sub}/{lin}")
-if(!dir.exists(paste0(outdir))){
-  dir.create(outdir)
-}
-pdf(paste0(outdir,"/lvl2.pdf"), width = 12, height = 8)
-gg_clust1
-gg_clust_2
-gg_anno1
-gg_anno2
-dev.off()
-```
-
 
 ```{r}
 res_dir <- glue("{proj_dir}/data/{stamp}/{sub}/processed/{lin}")
-qsave(sce, glue("{res_dir}/lvl1_sce.qs"), nthreads = 8)
+qsave(sce, glue("{res_dir}/lvl2_sce.qs"), nthreads = 8)
 ```

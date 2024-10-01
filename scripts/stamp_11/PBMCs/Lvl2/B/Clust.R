@@ -34,7 +34,7 @@ snn.gr <- buildSNNGraph(sce, type = "jaccard",
                         use.dimred="PCA", BPPARAM = bp)
 # Run Leiden
 #### #### #### #### #### #### #### #### #### #### #### #### #### #### #### #### 
-clusters <- igraph::cluster_louvain(snn.gr, resolution = 0.2)
+clusters <- igraph::cluster_louvain(snn.gr, resolution = 0.5)
 
 # Viz
 #### #### #### #### #### #### #### #### #### #### #### #### #### #### #### #### 

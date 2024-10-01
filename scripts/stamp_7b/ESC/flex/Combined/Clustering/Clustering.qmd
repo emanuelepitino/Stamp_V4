@@ -17,9 +17,11 @@ editor_options:
   chunk_output_type: console
 execute:
   echo: true
-  fig-width: 12     
-  fig-height: 9 
+  fig-width: 9     
+  fig-height: 6 
 ---
+
+In this notebook we will cluster the combined and integrated object containing iESCs + BMP4 at different timepoints.
 
 ## Setup
 ### Libraries
@@ -45,9 +47,7 @@ source(glue("{dir}/scripts/misc/paths.R"))
 source(glue("{dir}/scripts/misc/BIN.R"))
 
 sample <- "combined"
-#sample <- "iESC_0h"
 stamp <- "Stamp_7b"
-#npcs <- params$npcs
 dir <- glue("{here()}")
 source(glue("{dir}/scripts/misc/paths.R"))
 source(glue("{dir}/scripts/misc/BIN.R"))
@@ -56,37 +56,16 @@ source(glue("{dir}/scripts/misc/BIN.R"))
 ### Load data
 ```{r}
 base_dir <- glue("{proj_dir}/data/{stamp}/processed/flex/{sample}")
-sce <- qread(glue("{base_dir}/proc_sce.qs"), nthreads = 8)
+sce <- qread(glue("{base_dir}/integrated_sce.qs"), nthreads = 8)
 sce
 ```
 
-```{r}
-df <- as.data.frame(colData(sce))
-df$bcd <- rownames()
-um <- reducedDim(sce,"PCA")
-df <- cbind(df,um)
-df <- df[sample(nrow(df)), ]
-
-
-ggplot(df, aes(x = PC1, y = PC2, color = sample)) +
-  ggrastr::rasterise(geom_point(shape = 16, size = 0.1), dpi = 1000) +
-  #scale_color_manual(values = pal) +
-  theme_bw() +
-  theme(
-    text = element_text(size = 15, color = "black"),
-    axis.text = element_text(size = 10, color = "black"),
-    panel.grid.major = element_blank(),  # Remove major grid lines
-    panel.grid.minor = element_blank()   # Remove minor grid lines
-  ) +
-  guides(color = guide_legend(override.aes = list(size = 3))) +
-  labs(x = "umap1", y = "umap2", color = "Sample")
-```
 
 # Clustering
 
-## Build snn graph with different n neighbours
+## Build snn graph
 ```{r}
-snn <- buildSNNGraph(sce, type = "jaccard", k = 10, use.dimred="PCA", BPPARAM = bp)
+snn <- buildSNNGraph(sce, type = "jaccard", use.dimred="HARMONY", BPPARAM = bp)
 ```
 
 ## Run louvain 
@@ -96,26 +75,41 @@ clusters <- igraph::cluster_louvain(snn, resolution = 1)
 
 ```{r}
 sce$label <- as.character(clusters$membership) # assign labels
-pal <- Polychrome::createPalette(n_distinct(sce$label), c("#fc6060", "#74f774", "#7c7cfc")) # palette
+pal <- Polychrome::createPalette(n_distinct(sce$label), c("#FBB4AE", "#B3CDE3", "#CCEBC5"))
 names(pal) <- unique(sce$label)
 ```
 
-## Silhouette plot
+
+## Clusters in integrated PCA
 ```{r}
-sil.approx <- approxSilhouette(reducedDim(sce, "PCA"), clusters= sce$label)
-sil.data <- as.data.frame(sil.approx)
-sil.data$closest <- factor(ifelse(sil.data$width > 0, sce$label, sil.data$other))
-sil.data$cluster <- sce$label
-ggplot(sil.data, aes(x=cluster, y=width, colour=closest)) +
-    ggbeeswarm::geom_quasirandom(method="smiley", size = 0.8, shape = 16) + 
-  scale_color_manual(values = pal)
+df <- as.data.frame(colData(sce)) # cd
+pca <- reducedDim(sce,"HARMONY") # pc
+df <- cbind(df,pca) # merge
+df <- df[sample(nrow(df)), ] # shuffle
+
+df$label <- factor(df$label, levels = sort(unique(as.numeric(df$label)), decreasing = F))
+
+ggplot(df, aes(x = HARMONY_1, y = HARMONY_2, color = label)) +
+  ggrastr::rasterise(geom_point(shape = 16, size = 0.1), dpi = 1000) +
+  scale_color_manual(values = pal) +
+  theme_bw() +
+  theme(
+    text = element_text(size = 25, color = "black"),
+    axis.text = element_text(size = 20, color = "black"),
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 18),
+    panel.grid.major = element_blank(),  # Remove major grid lines
+    panel.grid.minor = element_blank()   # Remove minor grid lines
+  ) +
+  guides(color = guide_legend(override.aes = list(size = 3))) +
+  labs(x = "HARMONY_1", y = "HARMONY_1", color = "Cluster") +
+  coord_equal()
 ```
 
 ## Clusters in Umap
 ```{r, fig.width= 8, fig.height= 5}
 df <- as.data.frame(colData(sce))
-df$bcd <- rownames()
-um <- reducedDim(sce,"UMAP")
+um <- reducedDim(sce,"UMAP_integ")
 df <- cbind(df,um)
 df <- df[sample(nrow(df)), ]
 
@@ -132,7 +126,7 @@ ggplot(df, aes(x = UMAP1, y = UMAP2, color = label)) +
     panel.grid.minor = element_blank()   # Remove minor grid lines
   ) +
   guides(color = guide_legend(override.aes = list(size = 3))) +
-  labs(x = "umap1", y = "umap2", color = "Cluster")
+  labs(x = "", y = "", color = "Cluster")
 ```
 
 ## Clusters numbers
@@ -153,6 +147,23 @@ ggplot(df, aes(x = Var1, y = Freq, fill = Var1)) +
   labs(x = "Cluster", y = "nCells", fill = "Cluster")
 ```
 
+## Clusters proportions per sample
+```{r}
+df <- as.data.frame(table(sce$sample,sce$label)) %>%
+      group_by(Var1) %>%
+      mutate(Proportion = round((Freq / sum(Freq)) * 100, 2))
+
+df$Var1 <- factor(df$Var1, levels = c("iESC_0h","iESC_6h","iESC_12h","iESC_24h","iESC_48h","iESC_72h","iESC_96h","iESC_120h"))
+ggplot(df, aes( x = Var1 , y = Proportion, fill = Var2)) + 
+  geom_col() +
+  scale_fill_manual(values = pal) +
+  theme_bw() +
+  theme(text = element_text(size = 15, color = "black"),
+        axis.text = element_text(size = 15, color = "black"),
+        panel.grid = element_blank()) +
+  labs(x = "Sample", fill = "Cluster")
+```
+
 ## QC metrics per cluster
 
 ```{r}
@@ -169,29 +180,15 @@ df$label <- factor(df$label, levels = df %>%
 ggplot(df, aes(x = label, y = sum)) + 
   geom_jitter(shape = 16, alpha = 0.8, size = 0.8, aes(color = log(detected))) +
   geom_boxplot(alpha = 0.8, outlier.shape = NA, fill = NA) +
-  scale_color_gradient(low = "navy", high = "gold4") + 
+  scale_color_viridis_c() +
+  scale_y_log10() +
   labs(x = "Cluster", y = "nCount", color = "Log(nFeature)") + 
   theme_bw() +
   theme(text = element_text(size = 15, color = "black"),
-        axis.text = element_text(size = 10, color = "black"))
+        axis.text = element_text(size = 10, color = "black"),
+        panel.grid = element_blank())
 ```
 
-## Viz top HVGs
-```{r}
-hvg <- metadata(sce)[[glue("hvg_{sample}")]]
-plotHeatmap(sce, features = hvg[1:20],
-            center = TRUE, colour_columns_by = "label", 
-            order_columns_by = "label",
-            treeheight_row = 0, treeheight_col = 0,
-            main = "Top 20 HVGs")
-```
-
-# Run scDblFinder
-```{r}
-set.seed(10010101)
-library(scDblFinder)
-sce <- scDblFinder(sce, clusters= sce$label, BPPARAM = bp)
-```
 
 ## nFeature/nCount
 ```{r}
@@ -202,6 +199,7 @@ nsgl <- sum(df$scDblFinder.class == "singlet")
 
 pctdbl <- round(ndbl/(ndbl+nsgl)*100,2)
 
+df <- df[sample(rownames(df)),]
 ggplot(df, aes(x = detected, y = sum, color = scDblFinder.class)) +
   geom_point(shape = 16, size = 0.4) +
   scale_color_manual(values = c("singlet" = "green4", "doublet" = "red4")) +
@@ -238,23 +236,11 @@ df$Var2 <- factor(df$Var2, levels = c("doublet", "singlet"))
 ggplot(df, aes(x = Var1, y = pct, fill = Var2)) +
   scale_fill_manual(values = c("singlet" = "green4", "doublet" = "red4")) +
   geom_col(position = "stack") + 
-  labs(x = "Cluster", y = "%", fill = "scDblFinder", title = "Doublets % per Cluster") + 
+  labs(x = "Cluster", y = "Proportion", fill = "scDblFinder", title = "Doublets % per Cluster") + 
   theme_bw() +
   theme(text = element_text(size = 15, color = "black"),
         axis.text = element_text(size = 10, color = "black")) + 
   guides(color = guide_legend(override.aes = list(size = 3)))
-```
-
-## Doublets Umap
-```{r, fig.width= 12, fig.height= 5}
-wh(12,5)
-wrap_plots(plotReducedDim(sce, "UMAP", colour_by="label", point_size = 2, scattermore = TRUE) +
-  scale_color_manual(values = pal) +
-  guides(colour = guide_legend(override.aes = list(alpha = 1))) +
-  labs(color = "Cluster"),
-  
-  plotReducedDim(sce, "UMAP", colour_by="scDblFinder.class", point_size = 2, scattermore = TRUE) +
-  guides(colour = guide_legend(override.aes = list(alpha = 1))))
 ```
 
 # Save data

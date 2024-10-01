@@ -25,6 +25,5 @@ rownames(cd) <- NULL # remove rownames
 cd$cell_ID <- cd$cell_id
 cd <- cd %>% relocate(cell_ID) # put cell_ID as first column
 cd <- cd %>% select(cell_ID,ctc)
-
 write.table(cd, file=glue("{proj_dir}/data/stamp_4/_metadata.csv"), 
             sep=",", col.names=TRUE, row.names=FALSE, quote=FALSE) # save

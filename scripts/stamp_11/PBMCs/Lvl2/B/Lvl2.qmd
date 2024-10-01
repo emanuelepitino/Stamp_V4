@@ -58,17 +58,15 @@ names(pal) <- unique(sce$label)
 
 ## Clusters analysis
 ```{r}
-markers <- scoreMarkers(sce, sce$label, BPPARAM = bp)
+b <- c("CD79A","CD79B","CD19","IGHM","CD27","CD24","CD38","ITGAX","SELL","CCR7","TCL1A")
+b2 <- c("BCL6", "CD19", "CD79A", "CD79B","CD27","CD38", "CD40", "CXCR5", "MS4A1", "MYC")
 
-feat <- lapply(markers, function(df) {
-  as.data.frame(df) %>%
-    arrange(desc(self.detected)) %>%
-    head(10) %>%
-    rownames()
-})
-feat <- c(unique(unlist(feat)),"IGHE")
-
+feat <- unique(c(b,b2))
 gg_clust1 <- create_plots2(sce, "label", feat)
+
+pdf("/Users/emanuelepitino/Desktop/stamp11/B.pdf", width = 18, height = 8)
+gg_clust1
+dev.off()
 ```
 
 ```{r}
@@ -97,48 +95,13 @@ ggplot(df, aes(x = x_centroid, y = y_centroid, color = label)) +
 ## Annotation
 Here we want to distinguish main lineages such as T/B lymphocytes and Myeloid cells.
 ```{r}
-sce$lvl2[sce$label == "1"] <- "Naive B" # BAFF-R, FCMR, and CD22 
-sce$lvl2[sce$label == "2"] <- "Class Switched B" # BANK1, MS4A1
+sce$lvl2[sce$label == "1"] <- "transitional B" 
+sce$lvl2[sce$label == "2"] <- "B naive"
+sce$lvl2[sce$label == "3"] <- "B activated - plasma cells"
+sce$lvl2[sce$label == "4"] <- "B mature"
+sce$lvl2[sce$label == "5"] <- "B memory"
+
 ```
-
-```{r}
-#sce$lvl2 <- factor(sce$lvl1, levels = c("T","NK","B","Myeloid", "LowQ"))
-```
-
-
-```{r}
-pal_lvl2 <- Polychrome::createPalette(26,c("#99FFFF", "#FF99FF", "#FFFF99"))
-names(pal_lvl2) <- unique(sce$lvl2)
-```
-
-```{r}
-gg_anno1 <- create_plots2(sce, "lvl2", feat)
-```
-
-```{r}
-df <- as.data.frame(colData(sce))
-gg_anno2 <- wrap_plots(
-    plot_density(df, "sum", "lvl2", pal_lvl2, "Counts",2000),
-    plot_density(df, "detected", "lvl2", pal_lvl2, "Features",1000),
-    plot_density(df, "cell_area", "lvl2", pal_lvl2, "Cell Area",500),
-    plot_density(df, "nucleus_area", "lvl2", pal_lvl2, "Nucleus Area",80),
-    ncol = 2, nrow = 2) +
-plot_annotation(tag_levels = "A")
-```
-
-```{r}
-outdir <- glue("{plt_dir}/{stamp}/{sub}/{lin}")
-if(!dir.exists(paste0(outdir))){
-  dir.create(outdir)
-}
-pdf(paste0(outdir,"/lvl2.pdf"), width = 12, height = 8)
-gg_clust1
-gg_clust_2
-gg_anno1
-gg_anno2
-dev.off()
-```
-
 
 ```{r}
 res_dir <- glue("{proj_dir}/data/{stamp}/{sub}/processed/{lin}")

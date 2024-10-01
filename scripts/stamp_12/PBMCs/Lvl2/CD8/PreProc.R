@@ -16,35 +16,38 @@ suppressPackageStartupMessages({
   library(data.table)
   library(scales)
 })
-
-# read data
+# bin 
+stamp <- "stamp_12"
+sub <- "PBMCs"
+lin <- "CD8"
 dir <- glue("{here()}")
 source(glue("{dir}/scripts/misc/paths.R"))
 source(glue("{dir}/scripts/misc/BIN.R"))
-subsets <- c("Myeloid", "T", "B", "NK")
-sce_list <- lapply(subsets, function(subset) {
-  qread(glue("{proj_dir}/data/stamp_5/processed/Lvl2/{subset}/lvl2_sce.qs"), nthreads = 8)
-})
-names(sce_list) <- subsets
-# Remove PCA from obj
-sce_list <- lapply(sce_list, function(sce) {
-  reducedDim(sce, "PCA") <- NULL
-  sce
-})
-sce <- do.call(cbind,sce_list)
+# load data
+res_dir <- glue("{proj_dir}/data/{stamp}/{sub}/processed/T")
+sce <- qread(glue("{res_dir}/lvl2_sce.qs"), nthreads = 8)
 
-reducedDim(sce, "PCA") <- NULL
-reducedDim(sce,"UMAP") <- NULL
-assay(sce,"logcounts") <- NULL
-#Log normalize
+sce <- sce[,sce$lvl2 == lin]
+sce
+
+# Log normalize
 ##### ##### ##### ##### ##### ##### ##### ##### ##### ##### ##### ##### 
 sce <- logNormCounts(sce, BPPARAM = bp) 
+
+# Feature Selection
+dec.var <- modelGeneVar(sce, BPPARAM = bp) # model gene var
+hvg <- getTopHVGs(dec.var,fdr.threshold = 0.9) # select hvg on fdr
+#hvg <- hvg[1:2000]
+dec.var$hvg <- "no" # Assign to dec.var column for plot
+dec.var$hvg[rownames(dec.var) %in% hvg] <- "yes"
+gg_hvg <- plot_hvg(dec.var = dec.var, sub = glue("stamp_12 PBMCs - {lin} subset")) # plot
+gg_hvg
 
 ## PCA
 ##### ##### ##### ##### ##### ##### ##### ##### ##### ##### ##### ##### 
 set.seed(101001)
-sce <- fixedPCA(sce,BSPARAM=IrlbaParam(), subset.row = NULL) # approximate SVD with irlba
-num_pcs_to_retain <- 8
+sce <- fixedPCA(sce,BSPARAM=IrlbaParam(), subset.row = hvg) # approximate SVD with irlba
+num_pcs_to_retain <- 5
 percent.var <- attr(reducedDim(sce), "percentVar")
 # Plot Elbow
 data <- data.frame(PC = 1:length(percent.var), Variance = percent.var)
@@ -68,5 +71,20 @@ sce <- runUMAP(sce, dimred = "PCA", n_dimred = c(1:num_pcs_to_retain), n_threads
 gg_um <- plotReducedDim(sce, "UMAP", scattermore = TRUE) 
 gg_um
 
+## Combined plot
+##### ##### ##### ##### ##### ##### ##### ##### ##### ##### ##### ##### 
+combined <- wrap_plots(gg_var, gg_hvg, gg_pca, gg_um, ncol = 2, nrow = 2) +
+  plot_annotation(tag_levels = "A") + 
+  plot_annotation(title = glue("{stamp} - {sub} - {lin}"), subtitle = glue("N = {comma(ncol(sce))} cells"))
+combined
+# save plot
+pltdir <- glue("{plt_dir}/{stamp}/{sub}/{lin}")
+dir.create(pltdir, showWarnings = F, recursive = T)
+pdf(glue("{pltdir}/PreProc.pdf"), width = 12, height = 8)
+combined
+dev.off()
+
 # Save obj
-qsave(sce, glue("{proj_dir}/data/stamp_5/processed/combined_sce.qs"), nthreads = 8)
+res_dir <- glue("{proj_dir}/data/{stamp}/{sub}/processed/{lin}")
+dir.create(res_dir, showWarnings = F)
+qsave(sce, glue("{res_dir}/proc_sce.qs"), nthreads = 8)

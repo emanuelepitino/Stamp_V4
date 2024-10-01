@@ -1,0 +1,375 @@
+---
+title: "Flex - CosMx Mapping | Stamp 7b "
+subtitle: "Emanuele Pitino"
+date: "`r Sys.Date()`"
+format: 
+  html:
+    theme: superhero
+    smooth-scroll: true
+    code-fold: true
+    self-contained: true
+    toc: true
+    toc_float: 
+      collapsed: false
+      smooth_scroll: true
+editor: source
+editor_options: 
+  chunk_output_type: console
+execute:
+  echo: true
+  fig-width: 8     
+  fig-height: 6 
+---
+
+## Setup
+### Libraries
+```{r}
+suppressPackageStartupMessages({
+library(SingleCellExperiment)
+library(dplyr)
+library(here)
+library(scater)
+library(scuttle)
+library(scran)
+library(glue)
+library(qs)
+library(scales)
+library(bluster)
+})
+```
+
+### Paths
+```{r}
+dir <- glue("{here()}")
+sample <- "combined"
+stamp <- "Stamp_7b"
+source(glue("{dir}/scripts/misc/paths.R"))
+source(glue("{dir}/scripts/misc/BIN.R"))
+```
+
+### Load data
+
+We load the flex object containing multiple time-points integrated by library
+```{r}
+base_dir <- glue("{proj_dir}/data/{stamp}/processed/flex/{sample}")
+flex <- qread(glue("{base_dir}/integrated_sce.qs"), nthreads = 8)
+flex
+```
+
+And the cosmx object from Irepan
+```{r}
+library(Seurat)
+cosmx <- readRDS(glue("{proj_dir}/data/{stamp}/processed/irepan_data/stamp_palantir_subset.rds"))
+mtx <- GetAssayData(cosmx, layer = "counts") # take mtx
+cd <- cosmx@meta.data # take coldata
+# create sce
+cosmx <- SingleCellExperiment(
+  assays = list(counts = mtx),
+  colData = cd
+)
+# clean
+rm(mtx)
+gc()
+```
+
+Assign tech variable
+```{r}
+cosmx$tech <- "cosmx"
+flex$tech <- "flex"
+```
+
+# subset for intersection with cosmx panel
+```{r}
+fs <- rownames(cosmx)
+fs <- intersect(fs, rownames(flex))
+flex <- flex[fs,]
+cosmx <- cosmx[fs,]
+
+# take mtx 
+mtx_fl <- counts(flex)
+mtx_cs <- counts(cosmx)
+mtx <- cbind(mtx_fl,mtx_cs)
+
+# take colData
+cd_fl <- as.data.frame(colData(flex)) %>% select(sample,tech)
+cd_cs <- as.data.frame(colData(cosmx))  %>% select(sample,tech)
+
+cd <- rbind(cd_fl,cd_cs)
+
+# merge sce
+sce <- SingleCellExperiment(
+  assays = list(counts = mtx),
+  colData = cd
+)
+
+```
+
+
+# lognormalize
+```{r}
+sce <- logNormCounts(sce)
+```
+
+# PCA
+```{r, fig.width= 4, fig.height=3}
+set.seed(101001)
+sce <- fixedPCA(sce)
+
+num_pcs_to_retain <- 20
+percent.var <- attr(reducedDim(sce), "percentVar")
+
+# Create a data frame for ggplot
+data <- data.frame(PC = 1:length(percent.var), Variance = percent.var)
+# Plot
+gg_var <- ggplot(data, aes(x = PC, y = Variance)) +
+  geom_point() +
+  xlab("PC") +
+  ylab("Variance explained (%)") +
+  geom_vline(xintercept = num_pcs_to_retain, color = "red") +
+  theme_bw()
+gg_var
+```
+
+# Integrate with harmony over tech
+```{r}
+sce <- harmony::RunHarmony(
+  sce,
+  group.by.vars = "tech",
+  dims.use = 1:20,
+  verbose = TRUE,
+  reduction.save = "HARMONY",
+  ncores = 8
+)
+```
+
+# Visualization
+
+## Not integrated & Integrated PCA by Tech
+```{r}
+df <- as.data.frame(colData(sce)) # cd
+pca <- reducedDim(sce,"PCA") # pc
+harmony <- reducedDim(sce,"HARMONY") # pc
+
+df <- cbind(df,pca,harmony) # merge
+df <- df[sample(nrow(df)), ] # shuffle
+
+pal <- Polychrome::createPalette(n_distinct(sce$tech), c("#FBB4AE", "#B3CDE3", "#CCEBC5"))
+names(pal) <- unique(sce$tech)
+
+df$sample <- factor(df$sample, levels = c("iESC_0h","iESC_6h","iESC_12h","iESC_24h","iESC_48h","iESC_72h","iESC_96h","iESC_120h"))
+
+wrap_plots(
+# not integrated PCA
+ggplot(df, aes(x = PC1, y = PC2, color = tech)) +
+  geom_point(shape = 16, size = 0.5) +
+  theme_bw() +
+  scale_color_manual(values = pal) +
+  theme(
+    text = element_text(size = 25, color = "black"),
+    axis.text = element_text(size = 20, color = "black"),
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 18),
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank()) +
+  coord_equal(),
+
+# integrated PCA
+ggplot(df, aes(x = HARMONY_1, y = HARMONY_2, color = tech)) +
+  geom_point(shape = 16, size = 0.5) +
+  theme_bw() +
+  scale_color_manual(values = pal) +
+  theme(
+    text = element_text(size = 25, color = "black"),
+    axis.text = element_text(size = 20, color = "black"),
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 18),
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank()) +
+  coord_equal(),
+ncol = 2)
+```
+
+
+## Integrated PCA by timepoints
+
+```{r, fig.height= 16}
+pal <- Polychrome::createPalette(30, c("#FBB4AE", "#B3CDE3", "#CCEBC5"))
+names(pal) <- c(unique(sce$sample), unique(sce$tech))
+
+ggplot(df, aes(x = HARMONY_1, y = HARMONY_2, color = tech)) +
+  geom_point(shape = 16, size = 0.5) +
+  theme_bw() +
+  scale_color_manual(values = pal) +
+  theme(
+    text = element_text(size = 25, color = "black"),
+    axis.text = element_text(size = 20, color = "black"),
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 18),
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank()) +
+  coord_equal() +
+  facet_grid(~sample ~tech)  +
+  guides(color = guide_legend(override.aes = list(size = 6))) 
+```
+
+From the PCA, it seems like the Flex samples 48h-72h-96h-120h were inverted.
+
+```{r, fig.height= 16}
+sce$custom_sample <- sce$sample
+sce$custom_sample[sce$sample == "iESC_120h" & sce$tech == "cosmx"] <- "iESC_48h"
+sce$custom_sample[sce$sample == "iESC_96h" & sce$tech == "cosmx"] <- "iESC_72h"
+sce$custom_sample[sce$sample == "iESC_72h" & sce$tech == "cosmx"] <- "iESC_96h"
+sce$custom_sample[sce$sample == "iESC_48h" & sce$tech == "cosmx"] <- "iESC_120h"
+
+sce$custom_sample[sce$sample == "iESC_0h" & sce$tech == "cosmx"] <- "iESC_24h"
+sce$custom_sample[sce$sample == "iESC_6h" & sce$tech == "cosmx"] <- "iESC_12h"
+sce$custom_sample[sce$sample == "iESC_12h" & sce$tech == "cosmx"] <- "iESC_6h"
+sce$custom_sample[sce$sample == "iESC_24h" & sce$tech == "cosmx"] <- "iESC_0h"
+
+
+df <- as.data.frame(colData(sce)) # cd
+pca <- reducedDim(sce,"PCA") # pc
+harmony <- reducedDim(sce,"HARMONY") # pc
+
+df$custom_sample <- factor(df$custom_sample, levels = c("iESC_0h","iESC_6h","iESC_12h",
+                                          "iESC_24h","iESC_48h","iESC_72h","iESC_96h","iESC_120h"))
+
+df <- cbind(df,pca,harmony) # merge
+df <- df[sample(nrow(df)), ] # shuffle
+
+ggplot(df, aes(x = HARMONY_1, y = HARMONY_2, color = tech)) +
+  geom_point(shape = 16, size = 0.5) +
+  theme_bw() +
+  scale_color_manual(values = pal) +
+  theme(
+    text = element_text(size = 25, color = "black"),
+    axis.text = element_text(size = 20, color = "black"),
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 18),
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank()) +
+  coord_equal() +
+  facet_grid(~custom_sample ~tech)  +
+  guides(color = guide_legend(override.aes = list(size = 6))) 
+```
+
+# Cluster
+```{r}
+## Build snn graph
+snn <- buildSNNGraph(sce, type = "jaccard", use.dimred="HARMONY", BPPARAM = bp)
+## Run louvain 
+clusters <- igraph::cluster_louvain(snn, resolution = 0.2)
+```
+
+```{r}
+sce$label <- clusters$membership
+df <- as.data.frame(colData(sce))
+df$sample <- factor(df$sample,
+                    levels = c("iESC_0h","iESC_6h","iESC_12h","iESC_24h","iESC_48h","iESC_72h","iESC_96h","iESC_120h"))
+```
+
+## Clusters Frequency by tech on potentially mislabeled sample labels
+```{r, fig.width= 20}
+pal <- Polychrome::createPalette(30, c("#FBB4AE", "#B3CDE3", "#CCEBC5"))
+names(pal) <- c(unique(sce$sample), unique(sce$tech), unique(sce$label))
+
+df <- as.data.frame(table(df$label, df$tech,df$sample))
+# Calculate the percentage and reorder by 'singlet' percentage
+df <- df %>%
+  group_by(Var1) %>%
+  mutate(pct = round(Freq / sum(Freq), 2)) %>%
+  ungroup()
+# Create the plot
+ggplot(df, aes(x = Var3, y = Freq, fill = Var1)) +
+  geom_col(position = "stack") + 
+  labs(x = "Cluster", y = "Frequency") + 
+  theme_bw() +
+  scale_fill_manual(values = pal) +
+  theme(text = element_text(size = 15, color = "black"),
+        axis.text = element_text(size = 10, color = "black")) + 
+  guides(color = guide_legend(override.aes = list(size = 3))) + 
+  facet_wrap(~Var2)
+```
+
+## Dotplot clusters
+```{r, fig.height=4}
+fs <- c("SOX2","PU5F1","NANOG","GATA3","HEY1","EOMES","KDR","SNAI2","PDGFRA",
+        "DUSP6","FOXF1","SNAI1","CXCR4","APOA1","TGBI")
+plotDots(sce, features = intersect(fs, rownames(sce)), group = "label", scale = T, center = T) + 
+  coord_flip()
+```
+
+### Annotation
+```{r}
+sce$anno[sce$label %in% c(1,2,3,4)] <- "Pluripotent"
+sce$anno[sce$label %in% c(10,11) ] <- "BMP4 early"
+sce$anno[sce$label == 9] <- "MesEndo"
+sce$anno[sce$label == 7] <- "Endoderm"
+sce$anno[sce$label == 8] <- "NANOG+ CXCR4+"
+sce$anno[sce$label == 5] <- "Paraxial"
+sce$anno[sce$label == 6] <- "Early mesoderm"
+```
+
+## Dotplot annotation
+```{r, fig.height=4}
+sce$anno <- factor(sce$anno, levels = c("Pluripotent", "BMP4 early","MesEndo","Early mesoderm",
+                                        "Paraxial","NANOG+ CXCR4+","Endoderm"))
+plotDots(sce, features = intersect(fs, rownames(sce)), group = "anno", scale = T, center = T) + 
+  coord_flip()
+```
+
+## Annotated clusters frequency by tech - potentially mislabeled sample labels
+```{r, fig.width=16}
+pal <- Polychrome::createPalette(30, c("#FBB4AE", "#B3CDE3", "#CCEBC5"))
+names(pal) <- c(unique(sce$sample), unique(sce$tech), unique(sce$label), unique(as.character(sce$anno)))
+
+df <- as.data.frame(colData(sce))
+df$sample <- factor(df$sample,
+                    levels = c("iESC_0h","iESC_6h","iESC_12h","iESC_24h","iESC_48h","iESC_72h","iESC_96h","iESC_120h"))
+
+df <- as.data.frame(table(df$anno, df$tech,df$sample))
+# Calculate the percentage and reorder by 'singlet' percentage
+df <- df %>%
+  group_by(Var1) %>%
+  mutate(pct = round(Freq / sum(Freq), 2)) %>%
+  ungroup()
+# Create the plot
+ggplot(df, aes(x = Var3, y = Freq, fill = Var1)) +
+  geom_col(position = "stack") + 
+  labs(x = "Cluster", y = "Frequency") + 
+  theme_bw() +
+  scale_fill_manual(values = pal) +
+  theme(text = element_text(size = 15, color = "black"),
+        axis.text = element_text(size = 10, color = "black")) + 
+  guides(color = guide_legend(override.aes = list(size = 3))) + 
+  facet_wrap(~Var2)
+```
+
+## Annotated clusters frequency by tech - "corrected" sample labels
+```{r, fig.width=16}
+pal <- Polychrome::createPalette(30, c("#FBB4AE", "#B3CDE3", "#CCEBC5"))
+names(pal) <- c(unique(sce$custom_sample), unique(sce$tech), unique(sce$label), unique(as.character(sce$anno)))
+
+df <- as.data.frame(colData(sce))
+df$custom_sample <- factor(df$custom_sample,
+                    levels = c("iESC_0h","iESC_6h","iESC_12h","iESC_24h","iESC_48h","iESC_72h","iESC_96h","iESC_120h"))
+
+df <- as.data.frame(table(df$anno, df$tech,df$custom_sample))
+# Calculate the percentage and reorder by 'singlet' percentage
+df <- df %>%
+  group_by(Var1) %>%
+  mutate(pct = round(Freq / sum(Freq), 2)) %>%
+  ungroup()
+# Create the plot
+ggplot(df, aes(x = Var3, y = Freq, fill = Var1)) +
+  geom_col(position = "stack") + 
+  labs(x = "Cluster", y = "Frequency") + 
+  theme_bw() +
+  scale_fill_manual(values = pal) +
+  theme(text = element_text(size = 15, color = "black"),
+        axis.text = element_text(size = 10, color = "black")) + 
+  guides(color = guide_legend(override.aes = list(size = 3))) + 
+  facet_wrap(~Var2)
+```
+
+

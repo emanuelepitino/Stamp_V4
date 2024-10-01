@@ -40,34 +40,40 @@ df_lab1 <- df[df$Mean.PanCK > thr_pck & df$score > thr_score, ]
 
 df_lab1$lab <- as.character(paste0("1.",1:nrow(df_lab1)))
 # Visualize
-gg_ctc1 <- ggplot(df, aes(x = score, y = Mean.PanCK, color = sum, size = Area.um2)) + 
-  ggrastr::rasterise(geom_point(shape = 16), dpi = 500) +
-  scale_color_viridis_c(option = "H") +
-  geom_label_repel(data = df_lab1, aes(label = lab),
-                   fill = NA, 
-                   direction = "both",
-                   label.size = NA,
-                   segment.color = NA,
-                   size = 5, 
-                   box.padding = 0.5,
-                   point.padding = 0.3, 
-                   force = 1,
-                   force_pull = 0.5,
-                   max.overlaps = Inf,
-                   min.segment.length = 0) +
-  scale_size_continuous(range = c(0.1, 5)) +
-  scale_color_viridis_c(option = "H") +
+#gg_ctc1 <- 
+gg_ctc1 <- ggplot(df, aes(x = score, y = Mean.PanCK, color = sum, size = Area.um2)) +
+  ggrastr::rasterise(geom_point(shape = 16), dpi = 500)  +
+  scale_color_viridis_c(option = "H") + 
+  scale_size_continuous(breaks = c(100,300), range = c(0.1, 5)) +
   geom_hline(yintercept = thr_pck, color = "red", linetype = "dashed") +
   geom_vline(xintercept = thr_score, color = "red", linetype = "dashed") +
   theme_bw() +
   theme(panel.grid = element_blank()) +
-  labs(size = "Area.um2", color = "nCount", x = "MCF7 score", y = "PCK MFI") +
-  scale_y_continuous(labels = scientific_10) +
-  scale_x_continuous(labels = scientific_10)
-
+  labs(size = "Area (um2)", color = "nCount", x = "MCF7 score", y = "PCK MFI") +
+  theme(text = element_text(size = 20, color = "black"),
+        axis.text = element_text(size = 20, color = "black")) +
+  geom_label_repel(
+    data = subset(df_lab1, lab == 1.2),  # Filter to include only rows where lab is 1.2
+    aes(label = lab),
+    fill = NA, 
+    direction = "both",
+    label.size = NA,
+    segment.color = NA,
+    size = 8, 
+    box.padding = 0.5,
+    point.padding = 0.3, 
+    force = 1,
+    force_pull = 0.5,
+    max.overlaps = Inf,
+    min.segment.length = 0
+  )
 #gg_ctc1
 
+pdf("/Users/emanuelepitino/Desktop/ctc_fig/CTC_1.2.pdf", width = 6, height = 4)
+gg_ctc1
+dev.off()
 
+#pdf(
 pltdir <- glue("{proj_dir}/figures/fig4/rds")
 saveRDS(gg_ctc1, file = glue("{pltdir}/gg_ctc1.rds"))
 saveRDS(df_lab1, file = glue("{pltdir}/df_lab1.rds"))

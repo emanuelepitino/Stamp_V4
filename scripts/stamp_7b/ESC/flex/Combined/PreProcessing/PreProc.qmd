@@ -17,8 +17,8 @@ editor_options:
   chunk_output_type: console
 execute:
   echo: true
-  fig-width: 12     
-  fig-height: 9 
+  fig-width: 9     
+  fig-height: 6 
 ---
 This document provides a comprehensive overview of the preprocessing steps performed on the stamp_7b iESCs Flex dataset.
 
@@ -50,7 +50,6 @@ source(glue("{dir}/scripts/misc/paths.R"))
 source(glue("{dir}/scripts/misc/BIN.R"))
 
 sample <- "combined"
-#sample <- "iESC_0h"
 stamp <- "Stamp_7b"
 #npcs <- params$npcs
 dir <- glue("{here()}")
@@ -96,12 +95,23 @@ sce <- logNormCounts(sce)
 ```
 
 ## Feature Selection
+
+Features were selected independently for each library. In this step, we will compute the intersection of these features across all libraries and use them in downstream analyses.
 ```{r}
-hvg_list <- metadata(sce)[grep("hvg_", names(metadata(sce)), value = TRUE)]
-hvg <- unique(unlist(hvg_list))
+#hvg_list <- metadata(sce)[grep("hvg_", names(metadata(sce)), value = TRUE)]
+#hvg_list <- lapply(hvg_list, function(x) x[1:2000])
+#hvg <- unique(unlist(hvg_list))
+#metadata(sce)$hvg_combined <- hvg
+
+#hvg_list <- metadata(sce)[grep("hvg_", names(metadata(sce)), value = TRUE)]
+#hvg <- sapply(hvg_list, \(.) rownames(sce) %in% .)
+#sum(rowSums(hvg) > 2)
 
 set.seed(0010101)
-dec.var <- modelGeneVar(sce, BPPARAM = bp) # model gene var
+dec.var <- modelGeneVar(sce, BPPARAM = bp) 
+hvg <- getTopHVGs(dec.var)
+hvg <- hvg[1:4000]
+length(hvg)
 dec.var$hvg <- "no" # Assign to dec.var column for plot
 dec.var$hvg[rownames(dec.var) %in% hvg] <- "yes"
 gg_hvg <- plot_hvg(dec.var = dec.var, sub = sample) # plot
@@ -114,7 +124,7 @@ gg_hvg
 set.seed(101001)
 sce <- fixedPCA(sce, subset.row = hvg)
 
-num_pcs_to_retain <- 10
+num_pcs_to_retain <- 20
 percent.var <- attr(reducedDim(sce), "percentVar")
 
 # Create a data frame for ggplot
@@ -142,6 +152,377 @@ set.seed(123)
 sce <- runUMAP(sce, dimred="PCA", BPPARAM = bp)
 gg_um <- plotReducedDim(sce, "UMAP", scattermore = TRUE, point_size = 2) 
 gg_um
+```
+
+
+## Add Library information
+```{r}
+sce$library[sce$sample %in% c("iESC_0h","iESC_6h","iESC_12h","iESC_24h")] <- "B1"
+sce$library[sce$sample %in% c("iESC_48h","iESC_72h","iESC_96h","iESC_120h")] <- "B2"
+```
+
+## PCA - libraries
+
+```{r}
+df <- as.data.frame(colData(sce)) # cd
+pca <- reducedDim(sce,"PCA") # pc
+df <- cbind(df,pca) # merge
+df <- df[sample(nrow(df)), ] # shuffle
+
+
+ggplot(df, aes(x = PC1, y = PC2, color = library)) +
+  ggrastr::rasterise(geom_point(shape = 16, size = 0.1), dpi = 1000) +
+  theme_bw() +
+  theme(
+    text = element_text(size = 25, color = "black"),
+    axis.text = element_text(size = 20, color = "black"),
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 18),
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank()
+  ) +
+  guides(color = guide_legend(override.aes = list(size = 3))) +
+  labs(x = "", y = "", color = "Library") +
+  coord_equal()
+```
+
+## PCA - time points
+
+```{r}
+df <- as.data.frame(colData(sce)) # cd
+pca <- reducedDim(sce,"PCA") # pc
+df <- cbind(df,pca) # merge
+df <- df[sample(nrow(df)), ] # shuffle
+
+pal <- Polychrome::createPalette(n_distinct(sce$sample), c("#FBB4AE", "#B3CDE3", "#CCEBC5"))
+names(pal) <- unique(sce$sample)
+
+df$sample <- factor(df$sample, levels = c("iESC_0h","iESC_6h","iESC_12h","iESC_24h","iESC_48h","iESC_72h","iESC_96h","iESC_120h"))
+
+ggplot(df, aes(x = PC1, y = PC2, color = sample)) +
+  ggrastr::rasterise(geom_point(shape = 16, size = 0.1), dpi = 1000) +
+  theme_bw() +
+  scale_color_manual(values = pal) +
+  theme(
+    text = element_text(size = 25, color = "black"),
+    axis.text = element_text(size = 20, color = "black"),
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 18),
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank()
+  ) +
+  guides(color = guide_legend(override.aes = list(size = 3))) +
+  labs(x = "PC1", y = "PC2", color = "Timepoint") +
+  coord_equal()
+```
+
+# Clustering on un-integrated PCA
+
+## Build snn graph
+```{r}
+snn <- buildSNNGraph(sce, type = "jaccard", use.dimred="PCA", BPPARAM = bp)
+```
+
+## Run louvain 
+```{r}
+clusters <- igraph::cluster_louvain(snn, resolution = 0.2)
+```
+
+```{r}
+sce$label <- as.character(clusters$membership) # assign labels
+pal <- Polychrome::createPalette(n_distinct(sce$label), c("#FBB4AE", "#B3CDE3", "#CCEBC5"))
+names(pal) <- unique(sce$label)
+```
+
+## Clusters numbers
+
+```{r, fig.width= 12, fig.height= 6}
+df <- as.data.frame(colData(sce))
+df <- as.data.frame(table(df$label))  %>%
+        mutate(pct = round(Freq/sum(Freq),2))
+df$Var1 <- factor(df$Var1, levels = df$Var1[order(-df$Freq)])
+
+ggplot(df, aes(x = Var1, y = Freq, fill = Var1)) + 
+  geom_col() + 
+  geom_text(aes(label = Freq), vjust = -0.5, size = 3) +
+  scale_fill_manual(values = pal) + 
+  theme_bw() +
+  theme(text = element_text(size = 15, color = "black"),
+        axis.text = element_text(size = 10, color = "black")) +
+  labs(x = "Cluster", y = "nCells", fill = "Cluster")
+```
+
+## Clusters proportions per sample
+```{r, fig.width= 12, fig.height= 6}
+df <- as.data.frame(table(sce$sample,sce$label)) %>%
+      group_by(Var1) %>%
+      mutate(Proportion = round((Freq / sum(Freq)) * 100, 2))
+
+df$Var1 <- factor(df$Var1, levels = c("iESC_0h","iESC_6h","iESC_12h","iESC_24h","iESC_48h","iESC_72h","iESC_96h","iESC_120h"))
+ggplot(df, aes( x = Var1 , y = Proportion, fill = Var2)) + 
+  geom_col() +
+  scale_fill_manual(values = pal) +
+  theme_bw() +
+  theme(text = element_text(size = 15, color = "black"),
+        axis.text = element_text(size = 15, color = "black"),
+        panel.grid = element_blank()) +
+  labs(x = "Sample", fill = "Cluster")
+```
+
+
+## Principal Component Regression
+
+```{r}
+.pcr <- \(sce, x) {
+    y <- reducedDim(sce, "PCA")
+    z <- summary(lm(y ~ sce[[x]]))
+    r2 <- sapply(z, \(.) .$adj.r.squared)
+    data.frame(x, pc=seq_along(r2), r2)
+}
+# for multiple variables 
+xs <- c("sample", "library", "label")
+df <- do.call(rbind, lapply(xs, \(x) .pcr(sce, x)))
+
+ggplot(df, aes(x = pc, y = r2, color = x)) +
+  geom_point() +
+  geom_line() +
+  theme_bw() + 
+  theme(panel.grid = element_blank()) +
+  scale_x_continuous(breaks = unique(df$pc))
+```
+
+## CellMixS
+```{r}
+#library(CellMixS)
+#cms_label <- cms(sce, k = 20, dim_red = "PCA", group = "label", BPPARAM = bp)
+#cms_library <- cms(sce, k = 20, dim_red = "PCA", group = "library", BPPARAM = bp)
+#cms_sample <- cms(sce, k = 20, dim_red = "PCA", group = "sample", BPPARAM = bp)
+```
+
+
+## Timepoint - Clusters in PCA 
+```{r}
+df <- as.data.frame(colData(sce)) # cd
+pca <- reducedDim(sce,"PCA") # pc
+df <- cbind(df,pca) # merge
+df <- df[sample(nrow(df)), ] # shuffle
+
+pal <- Polychrome::createPalette(sum(n_distinct(sce$label),n_distinct(sce$sample)), c("#FBB4AE", "#B3CDE3", "#CCEBC5"))
+names(pal) <- c(unique(sce$label), unique(sce$sample))
+
+df$label <- factor(df$label, levels = sort(unique(as.numeric(sce$label))))
+df$sample <- factor(df$sample, levels = c("iESC_0h","iESC_6h","iESC_12h","iESC_24h","iESC_48h","iESC_72h","iESC_96h","iESC_120h"))
+
+wrap_plots(
+    ggplot(df, aes(x = PC1, y = PC2, color = sample)) +
+  ggrastr::rasterise(geom_point(shape = 16, size = 0.1), dpi = 1000) +
+  theme_bw() +
+  scale_color_manual(values = pal) +
+  theme(
+    text = element_text(size = 25, color = "black"),
+    axis.text = element_text(size = 20, color = "black"),
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 18),
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank()
+  ) +
+  guides(color = guide_legend(override.aes = list(size = 3))) +
+  labs(x = "PC1", y = "PC2", color = "Timepoint") +
+  coord_equal(),
+  
+  ggplot(df, aes(x = PC1, y = PC2, color = label)) +
+  ggrastr::rasterise(geom_point(shape = 16, size = 0.1), dpi = 1000) +
+  theme_bw() +
+  scale_color_manual(values = pal) +
+  theme(
+    text = element_text(size = 25, color = "black"),
+    axis.text = element_text(size = 20, color = "black"),
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 18),
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank()
+  ) +
+  guides(color = guide_legend(override.aes = list(size = 3))) +
+  labs(x = "PC1", y = "PC2", color = "Label") +
+  coord_equal(),
+  ncol = 2)
+```
+
+## Timepoint - Clusters in UMAP 
+```{r}
+df <- as.data.frame(colData(sce)) # cd
+um <- reducedDim(sce,"UMAP") # pc
+df <- cbind(df,um) # merge
+df <- df[sample(nrow(df)), ] # shuffle
+
+pal <- Polychrome::createPalette(sum(n_distinct(sce$label),n_distinct(sce$sample)), c("#FBB4AE", "#B3CDE3", "#CCEBC5"))
+names(pal) <- c(unique(sce$label), unique(sce$sample))
+
+df$label <- factor(df$label, levels = sort(unique(as.numeric(sce$label))))
+df$sample <- factor(df$sample, levels = c("iESC_0h","iESC_6h","iESC_12h","iESC_24h","iESC_48h","iESC_72h","iESC_96h","iESC_120h"))
+
+wrap_plots(
+    ggplot(df, aes(x = UMAP1, y = UMAP2, color = sample)) +
+  ggrastr::rasterise(geom_point(shape = 16, size = 0.1), dpi = 1000) +
+  theme_bw() +
+  scale_color_manual(values = pal) +
+  theme(
+    text = element_text(size = 25, color = "black"),
+    axis.text = element_text(size = 20, color = "black"),
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 18),
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank()
+  ) +
+  guides(color = guide_legend(override.aes = list(size = 3))) +
+  labs(x = "", y = "", color = "Timepoint") +
+  coord_equal(),
+  
+  ggplot(df, aes(x = UMAP1, y = UMAP2, color = label)) +
+  ggrastr::rasterise(geom_point(shape = 16, size = 0.1), dpi = 1000) +
+  theme_bw() +
+  scale_color_manual(values = pal) +
+  theme(
+    text = element_text(size = 25, color = "black"),
+    axis.text = element_text(size = 20, color = "black"),
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 18),
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank()
+  ) +
+  guides(color = guide_legend(override.aes = list(size = 3))) +
+  labs(x = "", y = "", color = "Label") +
+  coord_equal(),
+  ncol = 2)
+```
+
+
+# Manually curated signatures
+
+## Read and clean signatures file
+```{r}
+# Read in the signatures file
+file <- suppressMessages({as.data.frame(readxl::read_xlsx(glue("{dir}/data/stamp_7b/curated_markers/SullivanLab_Gastrulation Marker Genes.xlsx")))})
+
+# Select the first 14 columns
+selected_columns <- file[ , 1:14]
+# Clean the column names: remove slashes, backslashes, parentheses, spaces, convert to lowercase 
+# and reduce multiple underscores to a single one, and remove trailing underscores
+cleaned_column_names <- tolower(
+  gsub("_$", "",           # Remove trailing underscore
+       gsub("__+", "_",    # Reduce multiple underscores to a single one
+            gsub("[-/()\\\\ ]", "_", colnames(selected_columns))  
+       )
+  )
+)
+
+# Create a list where each element is a vector with the same name as the column
+signatures <- lapply(selected_columns, function(column) {
+  # Remove NA values and convert to a simple vector
+  return(as.vector(na.omit(column)))
+})
+
+# Name the list elements with the cleaned column names
+names(signatures) <- cleaned_column_names
+
+feat <- unique(unlist(signatures))
+```
+
+## Signatures HeatMap
+
+```{r}
+fs <-  intersect(feat,rownames(sce))
+plotDots(sce, features =fs, group = "label") + 
+  coord_flip() +
+  scale_color_gradient2("z-scaled\nmean expr.", low="blue4", mid="grey90", high="red4") +
+  scale_size_continuous(limits=c(0, 1), breaks=seq(0, 1, 0.5), range=c(1, 3)) +
+  coord_flip() + 
+  theme_minimal(6) + theme(
+    aspect.ratio = length(unique(sce$label))/length(fs),
+    axis.text.y=element_text(color="black"),
+    axis.text.x = element_text(angle = 45, hjust = 1, color="black"), 
+        panel.grid.major = element_line(linewidth = 0.1, color = "lightgrey"),
+        axis.title=element_blank(), 
+        legend.key.size = unit(0.5, "lines")) 
+```
+
+## QC metrics per cluster
+
+```{r, fig.width= 12, fig.height= 6}
+df <- as.data.frame(colData(sce))
+
+# reorder by mean ncount
+df$label <- factor(df$label, levels = df %>% 
+  group_by(label) %>% 
+  summarise(mean_sum = mean(sum)) %>% 
+  arrange(-mean_sum) %>% 
+  pull(label))
+
+# Create the plot
+ggplot(df, aes(x = label, y = sum)) + 
+  geom_jitter(shape = 16, alpha = 0.8, size = 0.8, aes(color = log(detected))) +
+  geom_boxplot(alpha = 0.8, outlier.shape = NA, fill = NA) +
+  scale_color_viridis_c() +
+  scale_y_log10() +
+  labs(x = "Cluster", y = "nCount", color = "Log(nFeature)") + 
+  theme_bw() +
+  theme(text = element_text(size = 15, color = "black"),
+        axis.text = element_text(size = 10, color = "black"),
+        panel.grid = element_blank())
+```
+
+
+## nFeature/nCount
+```{r}
+df <- as.data.frame(colData(sce))
+
+ndbl <- sum(df$scDblFinder.class == "doublet")
+nsgl <- sum(df$scDblFinder.class == "singlet")
+
+pctdbl <- round(ndbl/(ndbl+nsgl)*100,2)
+
+df <- df[sample(rownames(df)),]
+ggplot(df, aes(x = detected, y = sum, color = scDblFinder.class)) +
+  geom_point(shape = 16, size = 0.4) +
+  scale_color_manual(values = c("singlet" = "green4", "doublet" = "red4")) +
+            labs(subtitle = glue("Doublets: {pctdbl}%") ,x = "nFeature", y = "nCount", color = "scDblFinder", title = "nFeat vs nCount") + 
+            theme_bw() +
+            theme(text = element_text(size = 15, color = "black"),
+                  axis.text = element_text(size = 10, color = "black")) +
+            guides(color = guide_legend(override.aes = list(size = 3)))
+```
+
+## Doublets per cluster
+```{r}
+df <- as.data.frame(colData(sce))
+df <- as.data.frame(table(df$label, df$scDblFinder.class))
+
+# Calculate the percentage and reorder by 'singlet' percentage
+df <- df %>%
+  group_by(Var1) %>%
+  mutate(pct = round(Freq / sum(Freq), 2)) %>%
+  ungroup()
+
+# Calculate the percentage of 'singlets' for reordering
+singlet_pct <- df %>% 
+  filter(Var2 == "singlet") %>% 
+  select(Var1, pct)
+
+# Reorder Var1 by the percentage of 'singlets'
+df$Var1 <- factor(df$Var1, levels = singlet_pct$Var1[order(singlet_pct$pct, decreasing = TRUE)])
+
+# Make Var2 a factor to control the order in the legend and plot
+df$Var2 <- factor(df$Var2, levels = c("doublet", "singlet"))
+
+# Create the plot
+ggplot(df, aes(x = Var1, y = pct, fill = Var2)) +
+  scale_fill_manual(values = c("singlet" = "green4", "doublet" = "red4")) +
+  geom_col(position = "stack") + 
+  labs(x = "Cluster", y = "Proportion", fill = "scDblFinder", title = "Doublets % per Cluster") + 
+  theme_bw() +
+  theme(text = element_text(size = 15, color = "black"),
+        axis.text = element_text(size = 10, color = "black")) + 
+  guides(color = guide_legend(override.aes = list(size = 3)))
 ```
 
 # Save plots

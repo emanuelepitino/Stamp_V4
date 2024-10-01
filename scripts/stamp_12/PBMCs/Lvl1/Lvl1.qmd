@@ -1,0 +1,180 @@
+---
+title: "Level1 annotation - stamp12"
+subtitle: "Emanuele Pitino"
+date: "`r Sys.Date()`"
+format: 
+  html:
+    theme: superhero
+    smooth-scroll: true
+    code-fold: true
+    self-contained: true
+    toc: true
+    toc_float: 
+      collapsed: false
+      smooth_scroll: true
+params:
+  sample: !expr NA
+editor: source
+editor_options: 
+  chunk_output_type: console
+execute:
+  echo: true
+---
+```{r}
+suppressPackageStartupMessages({
+library(SingleCellExperiment)
+library(tidyverse)
+library(dplyr)
+library(here)
+library(scater)
+library(scuttle)
+library(glue)
+library(qs)
+library(parallel)
+library(scran)
+library(BiocParallel)
+library(BiocNeighbors)
+library(BiocSingular)
+library(data.table)
+})
+```
+
+```{r}
+dir <- glue("{here()}")
+# Parameters and paths
+source(glue("{dir}/scripts/misc/paths.R"))
+source(glue("{dir}/scripts/misc/BIN.R"))
+stamp <- "stamp_12"
+sub <- "PBMCs"
+sce <- qread(glue("{proj_dir}/data/{stamp}/{sub}/processed/clust_sce.qs"), nthreads = 8)
+```
+
+
+```{r}
+pal <- Polychrome::createPalette(26,c("#99FFFF", "#FF99FF", "#FFFF99"))
+names(pal) <- unique(sce$label)
+```
+
+## Clusters analysis
+```{r}
+markers <- scoreMarkers(sce, sce$label, BPPARAM = bp)
+
+feat <- lapply(markers, function(df) {
+  as.data.frame(df) %>%
+    arrange(desc(median.logFC.detected)) %>%
+    head(15) %>%
+    rownames()
+})
+feat <- unique(unlist(feat))
+gg_clust1 <- create_plots2(sce, "label", feat)
+```
+
+```{r}
+feat <- c("CD3E","CD4","CD8A","CD8B","FCGR3A","CD14","CD79A","CD79B","CD19","MZB1","NCAM1")
+gg_clust1 <- create_plots2(sce, "label", feat)
+```
+
+### save markers
+```{r}
+library(openxlsx)
+# Create a new workbook
+wb <- createWorkbook()
+
+# Iterate over each element in the 'markers' list
+for (name in names(markers)) {
+  df <- markers[[name]]
+  
+  # Sort the data frame by 'median.logFC.detected' in decreasing order
+  df_sorted <- df[order(df$median.logFC.detected, decreasing = TRUE), ]
+  
+  # Add the 'cluster' column
+  df_sorted$cluster <- name
+  df_sorted$gene <- rownames(df_sorted)
+  df_sorted <- as.data.frame(df_sorted) %>% select(cluster, median.logFC.detected, gene)
+  df_sorted$median.logFC.detected <- round(df_sorted$median.logFC.detected,2)
+  df_sorted <- df_sorted %>% filter(median.logFC.detected > 1)
+  # Add a new worksheet with the name of the current cluster
+  addWorksheet(wb, sheetName = name)
+  
+  # Write the sorted data frame to the worksheet
+  writeData(wb, sheet = name, x = df_sorted)
+}
+
+# Save the workbook to an Excel file
+mrkdir <- glue("{markers_dir}/{stamp}/{sub}")
+dir.create(mrkdir, showWarnings = F, recursive = T)
+saveWorkbook(wb, file = glue("{mrkdir}/lvl1.xlsx"), overwrite = T)
+```
+
+```{r}
+df <- as.data.frame(colData(sce))
+gg_clust_2 <- wrap_plots(
+    plot_density(df, "sum", "label", pal, "Counts",2000),
+    plot_density(df, "detected", "label", pal, "Features",1000),
+    plot_density(df, "cell_area", "label", pal, "Cell Area",500),
+    plot_density(df, "nucleus_area", "label", pal, "Nucleus Area",80),
+    ncol = 2, nrow = 2) +
+plot_annotation(tag_levels = "A")
+```
+
+## Annotation
+Here we want to distinguish main lineages such as T/B lymphocytes and Myeloid cells.
+```{r}
+sce$lvl1[sce$label == "9"] <- "LowQ"
+sce$lvl1[sce$label %in% c("1","10","5","6","7")] <- "T"
+sce$lvl1[sce$label == "11"] <- "Myeloid"
+sce$lvl1[sce$label %in% c("12","3")] <- "B"
+sce$lvl1[sce$label %in% c("4","8")] <- "Myeloid"
+sce$lvl1[sce$label == "2"] <- "NK"
+```
+
+
+```{r}
+pal_lvl1 <- Polychrome::createPalette(26,c("#99FFFF", "#FF99FF", "#FFFF99"))
+names(pal_lvl1) <- unique(sce$lvl1)
+```
+
+# Find new markers for lvl1
+```{r}
+markers <- scoreMarkers(sce, sce$lvl1, BPPARAM = bp)
+
+feat <- lapply(markers, function(df) {
+  as.data.frame(df) %>%
+    arrange(desc(median.logFC.detected)) %>%
+    head(20) %>%
+    rownames()
+})
+#feat <- unique(unlist(feat))
+feat <- c("CD3E","CD4","CD8A","CD8B","FCGR3A","CD14","CD79A","CD79B","CD19","MZB1","NCAM1")
+gg_anno1 <- create_plots2(sce, "lvl1", feat)
+```
+
+```{r}
+df <- as.data.frame(colData(sce))
+gg_anno2 <- wrap_plots(
+    plot_density(df, "sum", "lvl1", pal_lvl1, "Counts",2000),
+    plot_density(df, "detected", "lvl1", pal_lvl1, "Features",1000),
+    plot_density(df, "cell_area", "lvl1", pal_lvl1, "Cell Area",500),
+    plot_density(df, "nucleus_area", "lvl1", pal_lvl1, "Nucleus Area",80),
+    ncol = 2, nrow = 2) +
+plot_annotation(tag_levels = "A")
+```
+
+```{r}
+outdir <- glue("{plt_dir}/{stamp}")
+if(!dir.exists(paste0(outdir))){
+  dir.create(outdir)
+}
+pdf(paste0(outdir,"/lvl1.pdf"), width = 12, height = 8)
+gg_clust1
+gg_clust_2
+gg_anno1
+gg_anno2
+dev.off()
+```
+
+
+```{r}
+res_dir <- glue("{proj_dir}/data/{stamp}/{sub}/processed")
+qsave(sce, glue("{res_dir}/lvl1_sce.qs"), nthreads = 8)
+```
